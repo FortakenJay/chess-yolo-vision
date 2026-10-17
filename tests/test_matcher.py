@@ -92,3 +92,29 @@ def test_two_moves_between_reads_leave_unexplained_change(setup):
     after.push_san("d5")
     result = matcher.match(board, reader.change_probability(ref, reader.prepare(render(cam, cal, after, rng)), matcher.region))
     assert result.unexplained > 0.35
+
+
+def test_faint_black_on_dark_move_still_scores(setup):
+    """The live e7-e5: black pawn, dark square to dark square, only ~20% of its outline visibly changed.
+
+    With the default change rate that reads as 'nothing happened'; once the board's measured
+    black-on-dark contrast is known, the same evidence favours the move, while plain noise still doesn't.
+    """
+    cal, cam, _, _ = setup
+    roi = cam.roi()
+    board = chess.Board()
+    board.push_san("e4")
+    move = chess.Move.from_uci("e7e5")
+    rng = np.random.default_rng(3)
+
+    def score(matcher, change):
+        return matcher.score_move(board, move, change)[0].score
+
+    plain = MoveMatcher(cam, roi, SCALE)
+    tuned = MoveMatcher(cam, roi, SCALE)
+    tuned.set_tone_contrast(tuned.q_for_contrast(12.0, 10.0, 28.0), 0.55)  # contrast measured on the real board
+    mask = plain.predicted_mask(plain.render(board), board, move)
+    faint = np.where(mask & (rng.random(mask.shape) < 0.2), 1.0, 0.0).astype(np.float32)
+    noise = (rng.random(mask.shape) < 0.03).astype(np.float32)
+    assert score(plain, faint) < 0 < score(tuned, faint)
+    assert score(tuned, noise) < 0

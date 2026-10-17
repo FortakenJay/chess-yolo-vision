@@ -34,7 +34,7 @@ class Tier(IntEnum):
 
 @dataclass
 class ConfirmSettings:
-    min_score: float = 1000.0        # best move must explain at least this much change
+    min_score: float = 500.0         # best move must explain at least this much change
     t1_margin: float = 1500.0        # best minus runner-up for auto-accept
     t2_margin: float = 800.0         # same, after averaging the re-reads
     max_unexplained: float = 0.35    # share of the change in piece-sized blobs the best move leaves unexplained

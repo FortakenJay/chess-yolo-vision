@@ -114,6 +114,11 @@ score(move) = Σ over pixels p in M of   b(p) · ln(q_in / q_out)  +  (1 − b(p
 - `q_in` = 0.55: chance a pixel inside a moved piece's outline visibly changes (outlines are
   approximate, and a white piece on a white square changes little).
 - `q_out` = 0.03: noise rate.
+- `q_in` depends on what a pixel shows before and after the move. A black piece over a dark
+  square (or white over light) changes far fewer pixels. How faint those pairs are is measured
+  at game start from the colour distance between the learned black-piece and dark-square looks
+  (and white/light): at or below `t_low` the pair uses `q_in_low` (0.25), from `t_high` up the
+  normal `q_in`. On the roll-up vinyl board black-on-dark measures about 12 (faint), white-on-light 40.
 - A changed pixel inside the mask earns ln(0.55/0.03) ≈ +2.9; an unchanged pixel inside it costs
   ln(0.45/0.97) ≈ −0.77.
 - Scores are in full-resolution pixel units, so thresholds don't depend on the work scale.
@@ -138,9 +143,13 @@ When the board becomes still:
    change is also scored against the last move's own mask. If that beats every legal next move by
    `t2_margin` (and explains the change), the move is undone; no key needed.
 2. More than 35% of the board changed → something covers the board; wait.
-3. No move scores at least `min_score` (1,000) → if the change is small (under 6,000 px) it's
-   lighting drift and is ignored; otherwise you're asked, with **X** available.
-4. **Tier 1**: score ≥ 1,000, margin ≥ 1,500 and unexplained ≤ 35% → accepted.
+3. No move scores at least `min_score` (500) → if one move still clearly stands out (positive
+   score, margin ≥ `t2_margin`) it's re-read as in tier 2, never dropped. Otherwise, if the change
+   is small (under 6,000 px) it's lighting drift and is ignored; above that you're asked, with
+   **X** available.
+4. **Tier 1**: score ≥ 500, margin ≥ 1,500 and unexplained ≤ 35% → accepted. On the real board,
+   still frames score about −800 with margins under 50; a faint black-on-dark e7-e5 scores
+   850–1,000 with a margin around 1,550.
 5. **Tier 2**: read 3 more still frames and average each move's score. Margin ≥ 800 → accepted. If
    the next move starts before the re-reads finish, it decides with the reads it has.
 6. **Tier 3** (off by default): before/after photos and the top 3 moves go to a vision LLM (Anthropic

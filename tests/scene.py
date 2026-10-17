@@ -33,14 +33,16 @@ def table_texture(seed: int = 1) -> np.ndarray:
 
 
 def render(cam: BoardCamera, cal: Calibration, board: chess.Board, rng: np.random.Generator,
-           noise: float = 4.0, exposure: float = 0.0, table: np.ndarray | None = None) -> np.ndarray:
+           noise: float = 4.0, exposure: float = 0.0, table: np.ndarray | None = None,
+           dark_square: tuple[int, int, int] = (40, 70, 45),
+           outline: tuple[int, int, int] = (110, 110, 110)) -> np.ndarray:
     w, h = FRAME
     frame = np.full((h, w, 3), (40, 60, 70), np.uint8) if table is None else table.copy()
     # checkerboard on the table
     top = np.zeros((800, 800, 3), np.uint8)
     for r in range(8):
         for c in range(8):
-            top[r * 100:(r + 1) * 100, c * 100:(c + 1) * 100] = (225, 230, 225) if (r + c) % 2 == 0 else (40, 70, 45)
+            top[r * 100:(r + 1) * 100, c * 100:(c + 1) * 100] = (225, 230, 225) if (r + c) % 2 == 0 else dark_square
     warped = cv2.warpPerspective(top, np.linalg.inv(cal.homography), (w, h))
     board_mask = cv2.warpPerspective(np.full((800, 800), 255, np.uint8), np.linalg.inv(cal.homography), (w, h)) > 0
     frame[board_mask] = warped[board_mask]
@@ -49,7 +51,7 @@ def render(cam: BoardCamera, cal: Calibration, board: chess.Board, rng: np.rando
         poly = cam.silhouette(square, piece.piece_type).round().astype(np.int32).reshape(-1, 1, 2)
         color = (215, 220, 220) if piece.color else (25, 25, 30)
         cv2.fillPoly(frame, [poly], color)
-        cv2.polylines(frame, [poly], True, (110, 110, 110), 1)
+        cv2.polylines(frame, [poly], True, outline, 1)
         # a piece-type cue near the top so promotions differ slightly
         x, y = cam.project(np.array([[*square_center(square), -cam.heights[piece.piece_type]]]))[0]
         cv2.circle(frame, (int(x), int(y) + 4), 2 + piece.piece_type, (128, 128, 128), -1)

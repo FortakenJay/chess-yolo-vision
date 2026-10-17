@@ -49,13 +49,14 @@ reader:                      # change map + move matching
   texture_weight: 5.0        # local-contrast change; lets black pieces on dark squares count
   q_in: 0.55                 # chance a pixel inside a moved piece's outline visibly changes
   q_out: 0.03                # noise rate elsewhere
+  q_in_low: 0.25             # same, where piece and background share a tone (black on dark squares)
   height_scale: 1.0          # scales the assumed piece heights
   min_change_px: 900.0       # less change than this = nothing happened
   occlusion_fraction: 0.35   # more of the board changed than this = a hand/arm is in view
   unexplained_alarm_px: 6000.0  # change no legal move explains: ignored below this, asks you above
 
 confirm:                     # tiers (scores are in full-resolution pixels)
-  min_score: 1000.0
+  min_score: 500.0
   t1_margin: 1500.0          # auto-accept when best beats runner-up by this much
   t2_margin: 800.0           # same, after averaging the re-reads
   max_unexplained: 0.35      # share of the change left in piece-sized blobs the best move does not explain

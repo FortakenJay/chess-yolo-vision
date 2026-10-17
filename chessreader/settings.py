@@ -92,6 +92,7 @@ class ReaderSettings(BaseModel):
     texture_weight: float = 5.0        # weight of local-contrast change (black pieces on dark squares)
     q_in: float = 0.55                 # chance a pixel inside a moved piece's outline visibly changes
     q_out: float = 0.03                # noise rate elsewhere
+    q_in_low: float = 0.25             # same, where piece and background share a tone (black on dark)
     height_scale: float = 1.0          # scales the assumed piece heights
     min_change_px: float = 900.0       # less observed change than this = nothing happened
     occlusion_fraction: float = 0.35   # more than this share of the board changed = hand/arm in view
@@ -99,7 +100,7 @@ class ReaderSettings(BaseModel):
 
 
 class ConfirmTiers(BaseModel):
-    min_score: float = 1000.0
+    min_score: float = 500.0
     t1_margin: float = 1500.0
     t2_margin: float = 800.0
     max_unexplained: float = 0.35

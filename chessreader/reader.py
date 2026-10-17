@@ -185,6 +185,13 @@ class OccupancyReader:
                 self.templates[name] = (arr.mean(0), np.maximum(arr.std(0), self.std_floor))
         logger.info("Occupancy templates learned: %s", {k: len(v) for k, v in groups.items()})
 
+    def contrast(self, piece: str, square: str, chroma_weight: float = 1.5) -> float | None:
+        """Colour distance between a piece colour and a square colour, as the change map measures it."""
+        if piece not in self.templates or square not in self.templates:
+            return None
+        d = self.templates[piece][0] - self.templates[square][0]
+        return float(max(abs(d[0]), chroma_weight * np.hypot(d[1], d[2])))
+
     def read(self, warped: np.ndarray, cam, board) -> np.ndarray:
         """(8, 8, 3) probabilities [empty, white, black]; NaN where the square is hidden."""
         probs = np.full((8, 8, 3), np.nan, np.float32)

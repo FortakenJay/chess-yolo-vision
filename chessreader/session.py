@@ -95,6 +95,7 @@ class GameSession:
         self.sync = SyncMonitor()
         self.drift: DriftMonitor | None = None
         self.tracker = CameraTracker()
+        self._tone_q: tuple[float, float] | None = None  # change rates for black-on-dark, white-on-light
 
         self._ref: Prepared | None = None
         self._ref_image: np.ndarray | None = None
@@ -136,12 +137,14 @@ class GameSession:
         self.cal = cal
         self.cam = BoardCamera.from_calibration(cal, r.height_scale)
         roi = self.cam.roi()
-        self.matcher = MoveMatcher(self.cam, roi, r.scale, r.q_in, r.q_out)
+        self.matcher = MoveMatcher(self.cam, roi, r.scale, r.q_in, r.q_out, r.q_in_low)
         self.reader = ChangeReader(roi, r.scale, t_low=r.t_low, t_high=r.t_high, texture_weight=r.texture_weight)
         x0, y0, x1, y1 = roi
         region_full = cv2.resize(self.matcher.region.astype(np.uint8), (x1 - x0, y1 - y0),
                                  interpolation=cv2.INTER_NEAREST)
         g = self.s.gate
+        if self._tone_q is not None:
+            self.matcher.set_tone_contrast(*self._tone_q)
         self.gate = MotionGate(region_full, g.pixel_threshold, g.motion_fraction, g.stable_time_s, g.min_stable_frames)
         self._region_px = float(self.matcher.region.sum()) * self.matcher.px
 
@@ -152,11 +155,24 @@ class GameSession:
     def start_game(self, frame: np.ndarray, board: chess.Board | None = None) -> str | None:
         """Orient the board from the position on it and start recording. Returns an error or None."""
         position = board or chess.Board()
-        base = self._fresh_calibration(frame) if board is None else self.cal
-        try:
-            cal, cam, contrast = orient_from_start(base, frame, self.s.reader.height_scale, position)
-        except ValueError as exc:
-            return str(exc)
+        bases = [self.cal]
+        if board is None:
+            fresh = self._fresh_calibration(frame)
+            if fresh is not self.cal:
+                bases.insert(0, fresh)
+        oriented, error = [], ""
+        for base in bases:
+            try:
+                oriented.append(orient_from_start(base, frame, self.s.reader.height_scale, position))
+            except ValueError as exc:
+                error = str(exc)
+        if not oriented:
+            return error
+        # the board found now usually wins; if it snapped a rank off (pieces hide corners), the saved one fits better
+        cal, cam, contrast = max(oriented, key=lambda o: o[2])
+        if len(oriented) > 1:
+            logger.info("Orientation contrast: board found now %.0f, saved calibration %.0f",
+                        oriented[0][2], oriented[1][2])
         if contrast < 25:
             return f"Can't see the pieces clearly (contrast {contrast:.0f}). Is the start position set up?"
         self._build(cal)
@@ -168,6 +184,7 @@ class GameSession:
                                   threshold=self.s.health.drift_threshold)
         warped = cal.warp(frame)
         self.occ_reader.fit(warped, self.cam, position)
+        self._learn_tone_contrast()
         st = self.s.storage
         from .settings import resolve_path
         self.record = GameRecord(resolve_path(st.exports_dir), st.white, st.black, starting_fen=position.fen())
@@ -183,6 +200,18 @@ class GameSession:
             self.hooks.analyse(self.board)
         return None
 
+    def _learn_tone_contrast(self) -> None:
+        """How visible a piece is on a square of its own tone, on this board in this light."""
+        r = self.s.reader
+        qs = []
+        for piece, square in (("black", "dark"), ("white", "light")):
+            d = self.occ_reader.contrast(piece, square)
+            qs.append(self.matcher.q_in if d is None else self.matcher.q_for_contrast(d, r.t_low, r.t_high))
+            logger.info("%s pieces on %s squares: contrast %s, q_in %.2f", piece, square,
+                        "unknown" if d is None else f"{d:.0f}", qs[-1])
+        self._tone_q = (qs[0], qs[1])
+        self.matcher.set_tone_contrast(*self._tone_q)
+
     def _fresh_calibration(self, frame: np.ndarray) -> Calibration:
         """Find the board again in this frame; the saved calibration is stale if the camera moved."""
         found = detect_board(frame, self.s.calibration.warp_size)
@@ -192,7 +221,7 @@ class GameSession:
         old, new = np.asarray(self.cal.outer_corners), np.asarray(found.outer_corners)
         shift = float(np.linalg.norm(old[:, None] - new[None], axis=2).min(axis=1).mean())
         if shift > 2.0:
-            logger.info("Board is %.0f px from the saved calibration; using where it is now", shift)
+            logger.info("Board is %.0f px from the saved calibration", shift)
         return found
 
     def _follow_camera(self, frame: np.ndarray) -> bool:
@@ -362,6 +391,13 @@ class GameSession:
         if self._took_back(result, frame):
             return
         if result.best is None or result.best.score < self.confirm.min_score:
+            if result.best is not None and result.best.score > 0 and result.margin >= self.confirm.t2_margin:
+                # weak but clearly the best explanation (black on dark squares): re-read, never drop it
+                self._votes = [result]
+                self._vote_frame = frame
+                self.phase = Phase.VOTING
+                self.message = f"Faint change ({result.best.move.uci()}); re-reading..."
+                return
             if result.total_change < r.unexplained_alarm_px:
                 # e.g. lighting / exposure drift: no move explains it, so nothing happened
                 logger.debug("ignoring %.0fpx of change that no move explains", result.total_change)

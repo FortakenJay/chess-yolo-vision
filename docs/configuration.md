@@ -47,6 +47,8 @@ Use another file with `--config <file>`.
 | `t_low`, `t_high` | `10`, `28` | Colour distance below which a pixel is unchanged / above which it surely changed |
 | `q_in` | `0.55` | Chance a pixel inside a moved piece's outline visibly changes |
 | `q_out` | `0.03` | Noise rate outside |
+| `q_in_low` | `0.25` | `q_in` for a piece over a square of its own tone when the board shows them faintly apart (measured at game start) |
+| `texture_weight` | `5.0` | Weight of local-contrast change, which lets black pieces on dark squares register |
 | `height_scale` | `1.0` | Scales the assumed piece heights (taller set → raise it) |
 | `min_change_px` | `900` | Less change than this: nothing happened |
 | `occlusion_fraction` | `0.35` | More of the board changed than this: a hand/arm is in view, wait |
@@ -56,7 +58,7 @@ Use another file with `--config <file>`.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `min_score` | `1000` | A move must explain at least this much change |
+| `min_score` | `500` | A move must explain at least this much change |
 | `t1_margin` | `1500` | Accept immediately when the best move beats the runner-up by this much |
 | `t2_margin` | `800` | Same, after averaging the re-reads |
 | `max_unexplained` | `0.35` | Largest share of the change, in piece-sized blobs, the best move may leave unexplained |
