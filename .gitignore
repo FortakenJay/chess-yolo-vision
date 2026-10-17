@@ -1,0 +1,14 @@
+.env
+__pycache__/
+.pytest_cache/
+.venv/
+*.pyc
+exports/*.pgn
+exports/failures/*.json
+datasets/
+venv/
+runs/
+# Ultralytics auto-downloaded base weights (root level)
+yolo26*.pt
+yolo11*.pt
+yolov8*.pt

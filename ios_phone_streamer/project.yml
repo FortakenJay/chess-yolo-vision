@@ -1,0 +1,23 @@
+﻿name: PhoneStreamer
+options:
+  deploymentTarget:
+    iOS: 15.0
+settings:
+  base:
+    PRODUCT_BUNDLE_IDENTIFIER: com.jay.phonestreamer
+    SWIFT_VERSION: 5.0
+targets:
+  PhoneStreamer:
+    type: application
+    platform: iOS
+    sources:
+      - path: PhoneStreamer
+    info:
+      path: PhoneStreamer/Info.plist
+    settings:
+      base:
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: NO
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait
+    scheme:
+      testTargets: []

@@ -1,0 +1,11 @@
+numpy
+opencv-python
+pydantic
+pydantic-settings
+PyYAML
+python-chess
+python-dotenv
+pytest
+pytest-mock
+supabase
+ultralytics>=8.4.0

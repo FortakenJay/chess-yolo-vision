@@ -1,0 +1,9 @@
+﻿# Xcode user/system files
+*.xcworkspace
+xcuserdata/
+DerivedData/
+
+# Build artifacts
+build/
+*.ipa
+*.dSYM
