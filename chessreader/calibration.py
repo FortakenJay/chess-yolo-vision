@@ -78,6 +78,18 @@ class Calibration:
             corners = np.roll(corners, 1, axis=0)
         return replace(self, homography=h / h[2, 2], outer_corners=corners)
 
+    def moved(self, shift: np.ndarray) -> "Calibration":
+        """Same board after the image moved by `shift` (3x3, old image -> new image)."""
+        h = self.homography.astype(np.float64) @ np.linalg.inv(shift)
+
+        def move(pts: np.ndarray | None) -> np.ndarray | None:
+            if pts is None:
+                return None
+            return cv2.perspectiveTransform(pts.reshape(-1, 1, 2).astype(np.float64), shift).reshape(-1, 2).astype(np.float32)
+
+        return replace(self, homography=h / h[2, 2], outer_corners=move(self.outer_corners),
+                       inner_corners=move(self.inner_corners))
+
     def to_json(self) -> dict:
         return {
             "homography": self.homography.tolist(),

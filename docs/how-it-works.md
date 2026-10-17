@@ -150,7 +150,16 @@ Stockfish is never consulted here, so a blunder is recorded as played.
   piece, black piece). Squares whose centre is hidden by another piece are skipped. A square that
   confidently disagrees with the game on two checks in a row is flagged in red, with Z/T/X offered.
   Black pieces on dark squares are often too close to call; those are skipped rather than flagged.
-- **Drift** (every 10 s while still): edges of the top-down view are compared with the calibration
+- **Camera tracking** (each time the board goes still): ORB features in and around the board
+  (piece tops, printed coordinates, board edge, table) are matched between the last accepted
+  frame and the new one, and RANSAC fits the homography between them (`tracking.py`). If the
+  board corners moved more than `health.track_min_px`, the calibration and the reference frame
+  are moved with it, so a nudged or swaying camera needs no recalibration and a move made at
+  the same time is still read. Ambiguous matches (the checker pattern repeats every square)
+  are dropped so the fit can't snap one square off.
+- **Re-detection at start**: the starting position always shows the empty middle ranks, so
+  each game re-finds the board instead of trusting `calib/`, which is stale once the camera moved.
+- **Drift** (every 10 s while still, if tracking couldn't explain it): edges of the top-down view are compared with the calibration
   edge map. If under 45% of the reference edges are still within 4 px on 3 checks in a row, the game
   pauses and asks you to recalibrate (**C**).
 

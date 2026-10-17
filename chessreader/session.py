@@ -19,7 +19,7 @@ import chess
 import cv2
 import numpy as np
 
-from .calibration import Calibration, edge_map
+from .calibration import Calibration, detect_board, edge_map
 from .confirm import ConfirmSettings, LlmJudge, Tier, average_results, tier1_ok, tier2_ok
 from .engine import Analysis
 from .gating import GateState, MotionGate
@@ -28,6 +28,7 @@ from .health import DriftMonitor, SyncMonitor, compare_occupancy
 from .matcher import MatchResult, MoveMatcher
 from .reader import ChangeReader, OccupancyReader, Prepared
 from .settings import Settings
+from .tracking import CameraTracker
 from .storage import GameRecord
 
 logger = logging.getLogger(__name__)
@@ -93,6 +94,7 @@ class GameSession:
         self.occ_reader = OccupancyReader()
         self.sync = SyncMonitor()
         self.drift: DriftMonitor | None = None
+        self.tracker = CameraTracker()
 
         self._ref: Prepared | None = None
         self._ref_image: np.ndarray | None = None
@@ -149,8 +151,9 @@ class GameSession:
     def start_game(self, frame: np.ndarray, board: chess.Board | None = None) -> str | None:
         """Orient the board from the position on it and start recording. Returns an error or None."""
         position = board or chess.Board()
+        base = self._fresh_calibration(frame) if board is None else self.cal
         try:
-            cal, cam, contrast = orient_from_start(self.cal, frame, self.s.reader.height_scale, position)
+            cal, cam, contrast = orient_from_start(base, frame, self.s.reader.height_scale, position)
         except ValueError as exc:
             return str(exc)
         if contrast < 25:
@@ -178,6 +181,36 @@ class GameSession:
         if self.hooks.analyse:
             self.hooks.analyse(self.board)
         return None
+
+    def _fresh_calibration(self, frame: np.ndarray) -> Calibration:
+        """Find the board again in this frame; the saved calibration is stale if the camera moved."""
+        found = detect_board(frame, self.s.calibration.warp_size)
+        if found is None or found.reprojection_px > self.s.calibration.max_reprojection_px:
+            logger.info("Board not re-detected at start; using the saved calibration")
+            return self.cal
+        old, new = np.asarray(self.cal.outer_corners), np.asarray(found.outer_corners)
+        shift = float(np.linalg.norm(old[:, None] - new[None], axis=2).min(axis=1).mean())
+        if shift > 2.0:
+            logger.info("Board is %.0f px from the saved calibration; using where it is now", shift)
+        return found
+
+    def _follow_camera(self, frame: np.ndarray) -> bool:
+        """If the camera shifted since the reference frame, move the calibration and reference with it."""
+        shift = self.tracker.estimate(self._ref_image, frame, np.asarray(self.cal.outer_corners))
+        if shift is None or shift.moved_px < self.s.health.track_min_px:
+            return False
+        if shift.moved_px > 3 * self.cal.square_px:
+            logger.info("Camera tracking: shift of %.0f px is too large to trust", shift.moved_px)
+            return False
+        h, w = frame.shape[:2]
+        ref_image = cv2.warpPerspective(self._ref_image, shift.matrix, (w, h), borderMode=cv2.BORDER_REPLICATE)
+        cal = self.cal.moved(shift.matrix)
+        self._build(cal)
+        self._set_reference(ref_image)
+        if self.drift is not None:
+            self.drift.reset(edge_map(cal.warp(ref_image), self.s.calibration.canny_low, self.s.calibration.canny_high))
+        logger.info("Camera moved %.1f px; followed it (%d feature matches)", shift.moved_px, shift.inliers)
+        return True
 
     def _white_side(self) -> str:
         """Where white sits in the camera image, in words (for the LLM and the HUD)."""
@@ -263,9 +296,12 @@ class GameSession:
             return
 
         # PLAYING
-        if update.state == GateState.STABLE and timestamp - self._last_drift_t > self.s.health.drift_every_s:
+        if update.became_stable and self._follow_camera(frame):
+            self.gate.update(self._crop(frame), timestamp)  # the new gate starts from this frame
             self._last_drift_t = timestamp
-            if self.drift is not None and self.drift.update(self.cal.warp(frame)):
+        elif update.state == GateState.STABLE and timestamp - self._last_drift_t > self.s.health.drift_every_s:
+            self._last_drift_t = timestamp
+            if self.drift is not None and self.drift.update(self.cal.warp(frame)) and not self._follow_camera(frame):
                 self.phase = Phase.PAUSED
                 self.message = "The board or camera moved. Press C to recalibrate (pieces can stay)."
                 return
@@ -458,7 +494,10 @@ class GameSession:
         undone = self.record.undo()
         self.moves.pop()
         if self._ref_stack:
-            self._ref, self._ref_image = self._ref_stack.pop()
+            _, image = self._ref_stack.pop()
+            self._set_reference(image)  # re-prepare: the calibration may have changed since
+            if self._last_frame is not None:
+                self._follow_camera(self._last_frame)
         logger.info("Undid %s", undone.uci() if undone else None)
         self.phase = Phase.PLAYING
         self.message = f"Undid {undone.uci()}."

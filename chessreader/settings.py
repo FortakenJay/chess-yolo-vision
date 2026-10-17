@@ -115,6 +115,7 @@ class HealthSettings(BaseModel):
     sync_min_confidence: float = 0.9
     drift_every_s: float = 10.0
     drift_threshold: float = 0.45
+    track_min_px: float = 2.0       # follow camera shifts larger than this (board-corner pixels)
 
 
 class EngineSettings(BaseModel):

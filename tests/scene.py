@@ -19,10 +19,23 @@ def make_camera() -> tuple[Calibration, BoardCamera]:
     return cal, BoardCamera.from_calibration(cal)
 
 
-def render(cam: BoardCamera, cal: Calibration, board: chess.Board, rng: np.random.Generator,
-           noise: float = 4.0, exposure: float = 0.0) -> np.ndarray:
+def table_texture(seed: int = 1) -> np.ndarray:
+    """A wood-grain-like table, so camera tracking has something to hold on to beside the board."""
     w, h = FRAME
-    frame = np.full((h, w, 3), (40, 60, 70), np.uint8)
+    rng = np.random.default_rng(seed)
+    table = np.full((h, w, 3), (40, 60, 70), np.uint8)
+    for _ in range(400):
+        x, y = int(rng.integers(0, w)), int(rng.integers(0, h))
+        color = tuple(int(c) for c in rng.integers(20, 110, 3))
+        cv2.ellipse(table, (x, y), (int(rng.integers(3, 25)), int(rng.integers(2, 10))),
+                    float(rng.uniform(0, 180)), 0, 360, color, -1)
+    return table
+
+
+def render(cam: BoardCamera, cal: Calibration, board: chess.Board, rng: np.random.Generator,
+           noise: float = 4.0, exposure: float = 0.0, table: np.ndarray | None = None) -> np.ndarray:
+    w, h = FRAME
+    frame = np.full((h, w, 3), (40, 60, 70), np.uint8) if table is None else table.copy()
     # checkerboard on the table
     top = np.zeros((800, 800, 3), np.uint8)
     for r in range(8):

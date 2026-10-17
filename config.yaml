@@ -69,6 +69,7 @@ health:
   sync_min_confidence: 0.9
   drift_every_s: 10.0        # check whether the board/camera moved
   drift_threshold: 0.45
+  track_min_px: 2.0          # follow the camera when it shifts more than this; pieces can stay
 
 engine:
   enabled: true

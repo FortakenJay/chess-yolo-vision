@@ -25,7 +25,7 @@ and unexplained share.
 | `fit error ... too high` | Lens distortion or a very bent board. Flatten the board or click the corners |
 | `Can't see the pieces clearly (contrast ...)` when starting | The starting position isn't set up, or the light is too dim to tell white from black |
 | Grid lines don't sit on the squares (`view`) | Recalibrate (`calibrate` or **C**) |
-| `The board or camera moved` | Press **C**; pieces can stay |
+| `The board or camera moved` | Small shifts are followed automatically (`Camera moved ... followed it` in the log). This message means tracking couldn't follow it (a big jump, or the board covered): press **C**; pieces can stay. Fix the camera mount so it can't swing |
 | `Frame is ... but calibration was made at ...` | `camera.framesize` changed; recalibrate |
 
 ## Reading moves
