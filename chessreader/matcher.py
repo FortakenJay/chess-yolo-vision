@@ -48,6 +48,7 @@ class MatchResult:
     total_change: float          # observed change mass in the board region (full-res px)
     unexplained: float = 0.0     # share of observed change in piece-sized blobs outside the best move's mask
     margin: float = 0.0          # best score minus runner-up score
+    off_board: float = 0.0       # change beyond the board edge in hand-sized blobs (full-res px)
     is_promotion: bool = False
     notes: list[str] = field(default_factory=list)
 
@@ -61,7 +62,8 @@ class MatchResult:
 
 class MoveMatcher:
     def __init__(self, cam: BoardCamera, roi: tuple[int, int, int, int], scale: float,
-                 q_in: float = 0.55, q_out: float = 0.03, q_in_low: float = 0.25) -> None:
+                 q_in: float = 0.55, q_out: float = 0.03, q_in_low: float = 0.25,
+                 off_board_weight: float = 1.0) -> None:
         self.cam = cam
         self.roi = roi
         self.scale = scale
@@ -71,6 +73,10 @@ class MoveMatcher:
         self.px = 1.0 / (scale * scale)  # one work pixel in full-res pixels
         self.region = self._region_mask()
         self.floor = self._floor_tones()
+        # beyond the board edge only the tops of tall pieces can change, and hands and sleeves rest
+        # there: that evidence may support a move the board itself shows, never make one up
+        self.off_board_weight = off_board_weight
+        self.on_board = self.floor != TABLE
         self._piece_tone = np.array([TABLE] + [WHITE if i % 12 < 6 else BLACK for i in range(64 * 12)], np.uint8)
         q = np.full((5, 5), q_in)
         self._set_q(q)
@@ -122,7 +128,11 @@ class MoveMatcher:
                    change: np.ndarray) -> Candidate:
         pair = before_tones[mask].astype(np.intp) * 5 + self.tones(after_labels)[mask]
         b = change[mask]
-        score = float((b * self._pair_reward[pair] + (1.0 - b) * self._pair_penalty[pair]).sum()) * self.px
+        llr = b * self._pair_reward[pair] + (1.0 - b) * self._pair_penalty[pair]
+        on = self.on_board[mask]
+        on_score = float(llr[on].sum())
+        off_score = float(llr[~on].sum()) * self.off_board_weight
+        score = (on_score + min(off_score, max(on_score, 0.0))) * self.px
         return Candidate(move, score, float(mask.sum()) * self.px, float(b.sum()) * self.px)
 
     def unexplained_blobs(self, change: np.ndarray, mask: np.ndarray) -> float:
@@ -131,7 +141,13 @@ class MoveMatcher:
         Speckle, thin lines (a vinyl board's crease shifting) and exposure noise are opened
         away; what survives looks like a second moved or bumped piece.
         """
-        residual = (change > 0.5) & ~mask
+        residual = (change > 0.5) & ~mask & (self.floor != TABLE)
+        opened = cv2.morphologyEx(residual.astype(np.uint8), cv2.MORPH_OPEN, self._blob_kernel)
+        return float(change[opened > 0].sum()) * self.px
+
+    def off_board_blobs(self, change: np.ndarray, mask: np.ndarray) -> float:
+        """Change beyond the board edge, outside the move's own mask, that forms blobs: a hand or arm nearby."""
+        residual = (change > 0.5) & (self.floor == TABLE) & ~mask
         opened = cv2.morphologyEx(residual.astype(np.uint8), cv2.MORPH_OPEN, self._blob_kernel)
         return float(change[opened > 0].sum()) * self.px
 
@@ -154,7 +170,7 @@ class MoveMatcher:
         before = self.render(board)
         mask, after = self._after(before, board, move)
         cand = self._candidate(move, mask, self.tones(before), after, change)
-        total = float(change.sum()) * self.px
+        total = float(change.sum()) * self.px  # all of it: a hand resting off the board still counts
         return cand, (self.unexplained_blobs(change, mask) / total if total > 0 else 0.0)
 
     def match(self, board: chess.Board, change: np.ndarray) -> MatchResult:
@@ -162,7 +178,7 @@ class MoveMatcher:
         if change.shape != self.region.shape:
             raise ValueError(f"change map {change.shape} doesn't match region {self.region.shape}")
         change = np.where(self.region, change, 0.0).astype(np.float32)
-        total = float(change.sum()) * self.px
+        total = float(change.sum()) * self.px  # all of it: a hand resting off the board still counts
 
         before = self.render(board)
         before_tones = self.tones(before)
@@ -182,6 +198,7 @@ class MoveMatcher:
             best = candidates[0]
             result.margin = best.score - (candidates[1].score if len(candidates) > 1 else 0.0)
             result.unexplained = self.unexplained_blobs(change, masks[best.move]) / total if total > 0 else 0.0
+            result.off_board = self.off_board_blobs(change, masks[best.move])
             result.is_promotion = best.move.promotion is not None
             if result.is_promotion and promotion_seen:
                 result.notes.append("promotion: piece type decided by detector, default queen")

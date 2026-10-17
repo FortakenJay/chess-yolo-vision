@@ -49,6 +49,7 @@ Use another file with `--config <file>`.
 | `q_out` | `0.03` | Noise rate outside |
 | `q_in_low` | `0.25` | `q_in` for a piece over a square of its own tone when the board shows them faintly apart (measured at game start) |
 | `texture_weight` | `5.0` | Weight of local-contrast change, which lets black pieces on dark squares register |
+| `off_board_weight` | `1.0` | Weight of change beyond the board edge; never more than the move's on-board evidence |
 | `height_scale` | `1.0` | Scales the assumed piece heights (taller set → raise it) |
 | `min_change_px` | `900` | Less change than this: nothing happened |
 | `occlusion_fraction` | `0.35` | More of the board changed than this: a hand/arm is in view, wait |
@@ -61,7 +62,8 @@ Use another file with `--config <file>`.
 | `min_score` | `500` | A move must explain at least this much change |
 | `t1_margin` | `1500` | Accept immediately when the best move beats the runner-up by this much |
 | `t2_margin` | `800` | Same, after averaging the re-reads |
-| `max_unexplained` | `0.35` | Largest share of the change, in piece-sized blobs, the best move may leave unexplained |
+| `max_unexplained` | `0.35` | Largest share of the change, in piece-sized blobs, the best move may leave unexplained (on the board) |
+| `max_off_board` | `3000` | Change beyond the board edge, in blobs the best move doesn't explain, above which a hand is assumed and nothing is auto-accepted |
 | `vote_frames` | `3` | Extra still frames read in tier 2 |
 
 Raising `t1_margin` makes it ask more often but makes mistakes less likely. Use `replay` to see

@@ -137,7 +137,7 @@ class GameSession:
         self.cal = cal
         self.cam = BoardCamera.from_calibration(cal, r.height_scale)
         roi = self.cam.roi()
-        self.matcher = MoveMatcher(self.cam, roi, r.scale, r.q_in, r.q_out, r.q_in_low)
+        self.matcher = MoveMatcher(self.cam, roi, r.scale, r.q_in, r.q_out, r.q_in_low, r.off_board_weight)
         self.reader = ChangeReader(roi, r.scale, t_low=r.t_low, t_high=r.t_high, texture_weight=r.texture_weight)
         x0, y0, x1, y1 = roi
         region_full = cv2.resize(self.matcher.region.astype(np.uint8), (x1 - x0, y1 - y0),
@@ -306,9 +306,9 @@ class GameSession:
         result = self.matcher.match(self.board, change)
         self.last_result = result
         best = result.best
-        logger.debug("read: change %.0fpx, best %s %.0f, margin %.0f, unexplained %.2f",
+        logger.debug("read: change %.0fpx, best %s %.0f, margin %.0f, unexplained %.2f, off board %.0fpx",
                      result.total_change, best.move.uci() if best else None,
-                     best.score if best else 0, result.margin, result.unexplained)
+                     best.score if best else 0, result.margin, result.unexplained, result.off_board)
         return result
 
     def _save_frame(self, frame: np.ndarray, timestamp: float) -> None:

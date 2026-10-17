@@ -14,8 +14,12 @@ FRAME = (800, 600)
 OUTER = np.array([[165, 240], [545, 225], [655, 490], [88, 522]], dtype=np.float32)
 
 
-def make_camera() -> tuple[Calibration, BoardCamera]:
-    cal = calibration_from_outer_corners(OUTER, FRAME, 800)
+# nearly overhead, like the camera hanging above the board: corner pieces lean out past the edge
+OVERHEAD = np.array([[180, 70], [600, 66], [628, 520], [156, 526]], dtype=np.float32)
+
+
+def make_camera(outer: np.ndarray = OUTER) -> tuple[Calibration, BoardCamera]:
+    cal = calibration_from_outer_corners(outer, FRAME, 800)
     return cal, BoardCamera.from_calibration(cal)
 
 

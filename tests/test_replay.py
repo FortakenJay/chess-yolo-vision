@@ -10,7 +10,7 @@ import numpy as np
 
 from chessreader.replay import run_replay
 from chessreader.settings import Settings
-from tests.scene import FRAME, make_camera, render, table_texture
+from tests.scene import FRAME, OUTER, OVERHEAD, make_camera, render, table_texture
 
 GAME = "e4 e5 Nf3 Nc6 Bc4 Bc5 O-O Nf6 d3 d6 Bg5 h6 Bxf6 Qxf6 Nc3 O-O".split()
 
@@ -135,3 +135,70 @@ def test_dark_board_start_keeps_the_calibration_that_fits(tmp_path):
     assert summary["wrong_accepts"] == 0
     assert summary["moves_read"] == 6
     assert summary["by_tier"][4] == 0
+
+
+def _session_with_hand_off_board(tmp_path, at, radius, moves_before, move_during=None, outer=OUTER, **look):
+    """A game where a hand comes to rest just beyond the board edge (and stays) after `moves_before`."""
+    cal, cam = make_camera(outer)
+    rng = np.random.default_rng(11)
+    board = chess.Board()
+    frames, t = [], 0.0
+    x, y = cam.project(np.array([at + (0.0,)]))[0]
+
+    def add(hand: bool, n: int, sweep_over: str | None = None):
+        nonlocal t
+        for _ in range(n):
+            img = render(cam, cal, board, rng, **look)
+            if hand:
+                cv2.ellipse(img, (int(x), int(y)), radius, 30, 0, 360, (120, 150, 200), -1)
+            if sweep_over:  # the moving hand, so the motion gate sees the move being made
+                sq = chess.parse_square(sweep_over)
+                hx, hy = cam.project(np.array([[chess.square_file(sq) + .5, 7 - chess.square_rank(sq) + .5, -1.0]]))[0]
+                cv2.ellipse(img, (int(hx), int(hy)), (70, 45), 20, 0, 360, (120, 150, 200), -1)
+            frames.append((img, t))
+            t += 1.2
+
+    add(False, 3)
+    for san in moves_before:
+        board.push_san(san)
+        add(False, 5)
+    add(True, 6)  # the hand arrives and rests
+    if move_during:
+        move = board.parse_san(move_during)
+        add(True, 2, sweep_over=chess.square_name(move.from_square))
+        board.push(move)
+        add(True, 6)
+    return cal, frames
+
+
+def _play(settings, cal, frames):
+    from chessreader.session import GameSession
+
+    session = GameSession(settings, cal)
+    assert session.start_game(frames[0][0]) is None
+    for image, ts in frames[1:]:
+        session.process(image, ts)
+    return session
+
+
+def test_hand_resting_by_a_corner_is_not_a_move(tmp_path):
+    """Live: a hand resting beside h1 (reaching for the laptop) was read as Kh1."""
+    settings = Settings()
+    settings.engine.enabled = False
+    settings.storage.exports_dir = str(tmp_path / "exports")
+    cal, frames = _session_with_hand_off_board(tmp_path, (8.45, 7.7), (40, 30),
+                                                ["e4", "c5", "Nf3", "d6", "Bc4", "Nf6", "O-O", "a6"], outer=OVERHEAD)
+    session = _play(settings, cal, frames)
+    assert [m.uci() for m in session.board.move_stack] == ["e2e4", "c7c5", "g1f3", "d7d6", "f1c4", "g8f6",
+                                                           "e1g1", "a7a6"]  # and no Kh1
+
+
+def test_sleeve_beside_the_board_does_not_block_a_clean_move(tmp_path):
+    """Live: an arm resting on the table beside rank 8 made every black move 'unexplained'."""
+    settings = Settings()
+    settings.engine.enabled = False
+    settings.storage.exports_dir = str(tmp_path / "exports")
+    cal, frames = _session_with_hand_off_board(tmp_path, (2.5, -0.55), (42, 24), ["e4"], move_during="c5",
+                                                outer=OVERHEAD, dark_square=(34, 36, 38), outline=(48, 48, 50))
+    session = _play(settings, cal, frames)
+    assert [m.uci() for m in session.board.move_stack] == ["e2e4", "c7c5"]

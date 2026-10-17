@@ -38,13 +38,14 @@ class ConfirmSettings:
     t1_margin: float = 1500.0        # best minus runner-up for auto-accept
     t2_margin: float = 800.0         # same, after averaging the re-reads
     max_unexplained: float = 0.35    # share of the change in piece-sized blobs the best move leaves unexplained
+    max_off_board: float = 3000.0    # more change than this in blobs beyond the board edge = a hand is there
     vote_frames: int = 3             # extra still frames to read in tier 2
 
 
 def tier1_ok(result: MatchResult, cfg: ConfirmSettings) -> bool:
     best = result.best
     return (best is not None and best.score >= cfg.min_score and result.margin >= cfg.t1_margin
-            and result.unexplained <= cfg.max_unexplained)
+            and result.unexplained <= cfg.max_unexplained and result.off_board <= cfg.max_off_board)
 
 
 def average_results(results: list[MatchResult]) -> MatchResult:
@@ -67,6 +68,7 @@ def average_results(results: list[MatchResult]) -> MatchResult:
     if merged:
         out.margin = merged[0].score - (merged[1].score if len(merged) > 1 else 0.0)
         out.unexplained = float(np.mean([r.unexplained for r in results]))
+        out.off_board = float(np.mean([r.off_board for r in results]))
         out.is_promotion = merged[0].move.promotion is not None
     return out
 
@@ -74,7 +76,7 @@ def average_results(results: list[MatchResult]) -> MatchResult:
 def tier2_ok(result: MatchResult, cfg: ConfirmSettings) -> bool:
     best = result.best
     return (best is not None and best.score >= cfg.min_score and result.margin >= cfg.t2_margin
-            and result.unexplained <= cfg.max_unexplained)
+            and result.unexplained <= cfg.max_unexplained and result.off_board <= cfg.max_off_board)
 
 
 class LlmJudge:

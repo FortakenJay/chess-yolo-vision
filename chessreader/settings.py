@@ -93,6 +93,7 @@ class ReaderSettings(BaseModel):
     q_in: float = 0.55                 # chance a pixel inside a moved piece's outline visibly changes
     q_out: float = 0.03                # noise rate elsewhere
     q_in_low: float = 0.25             # same, where piece and background share a tone (black on dark)
+    off_board_weight: float = 1.0      # change beyond the board edge (tall pieces' tops, also hands); capped by on-board evidence
     height_scale: float = 1.0          # scales the assumed piece heights
     min_change_px: float = 900.0       # less observed change than this = nothing happened
     occlusion_fraction: float = 0.35   # more than this share of the board changed = hand/arm in view
@@ -104,6 +105,7 @@ class ConfirmTiers(BaseModel):
     t1_margin: float = 1500.0
     t2_margin: float = 800.0
     max_unexplained: float = 0.35
+    max_off_board: float = 3000.0
     vote_frames: int = 3
 
 

@@ -119,6 +119,12 @@ score(move) = Σ over pixels p in M of   b(p) · ln(q_in / q_out)  +  (1 − b(p
   at game start from the colour distance between the learned black-piece and dark-square looks
   (and white/light): at or below `t_low` the pair uses `q_in_low` (0.25), from `t_high` up the
   normal `q_in`. On the roll-up vinyl board black-on-dark measures about 12 (faint), white-on-light 40.
+- **Beyond the board edge** only the tops of tall pieces can change, but hands and sleeves rest
+  there too. Off-board pixels may add to a move's score at most as much as its on-board pixels
+  already give it, so a hand by the h1 corner can't make up a Kh1 when h1 itself didn't change.
+  Off-board change the best move doesn't explain is reported as `off_board`: above
+  `max_off_board` (3,000 px) a hand is nearby and nothing is auto-accepted. Smaller blobs there (a
+  sleeve) don't count as unexplained, so they no longer block a clean move.
 - A changed pixel inside the mask earns ln(0.55/0.03) ≈ +2.9; an unchanged pixel inside it costs
   ln(0.45/0.97) ≈ −0.77.
 - Scores are in full-resolution pixel units, so thresholds don't depend on the work scale.
