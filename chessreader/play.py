@@ -15,7 +15,7 @@ from .calibration import Calibration, CalibrationError, auto_calibrate, run_cali
 from .confirm import LlmJudge
 from .display import (GREEN, RED, YELLOW, draw_change, draw_eval_bar, draw_grid, draw_hud, draw_mask_outline,
                       draw_move, draw_occupancy, draw_quad, put_text, square_px)
-from .engine import EngineWorker
+from .engine import EngineWorker, find_stockfish
 from .geometry import BoardCamera
 from .session import GameSession, Phase, SessionHooks
 from .settings import PROJECT_DIR, Settings, resolve_path
@@ -66,11 +66,17 @@ class Services:
     def __init__(self, settings: Settings) -> None:
         self.engine = None
         e = settings.engine
-        if e.enabled and e.path:
-            try:
-                self.engine = EngineWorker(e.path, e.think_time_s, e.multipv).start()
-            except FileNotFoundError as exc:
-                logger.warning("%s; analysis off", exc)
+        if not e.enabled:
+            return
+        path = find_stockfish(e.path)
+        if path is None:
+            logger.warning("Stockfish not found (engine.path is %r, none on PATH either); analysis off. "
+                           "Install it (macOS: brew install stockfish) or set engine.path", e.path)
+            return
+        try:
+            self.engine = EngineWorker(path, e.think_time_s, e.multipv).start()
+        except FileNotFoundError as exc:
+            logger.warning("%s; analysis off", exc)
 
     def hooks(self, session_ref: list, settings: Settings) -> SessionHooks:
         hooks = SessionHooks(choose_promotion=make_promotion_chooser(settings, session_ref))

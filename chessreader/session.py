@@ -20,7 +20,7 @@ import cv2
 import numpy as np
 
 from .calibration import Calibration, detect_board, edge_map
-from .confirm import ConfirmSettings, LlmJudge, Tier, average_results, tier1_ok, tier2_ok
+from .confirm import ConfirmSettings, LlmJudge, Tier, average_results, ends_ok, tier1_ok, tier2_ok
 from .engine import Analysis
 from .gating import GateState, MotionGate
 from .geometry import BoardCamera, orient_from_start, square_center
@@ -185,6 +185,7 @@ class GameSession:
         warped = cal.warp(frame)
         self.occ_reader.fit(warped, self.cam, position)
         self._learn_tone_contrast()
+        self._update_occupancy(frame)
         st = self.s.storage
         from .settings import resolve_path
         self.record = GameRecord(resolve_path(st.exports_dir), st.white, st.black, starting_fen=position.fen())
@@ -258,11 +259,12 @@ class GameSession:
         logger.debug("takeback check: undoing %s scores %.0f (unexplained %.2f), best next move %.0f",
                      last.uci(), cand.score, unexplained, best)
         if (cand.score < self.confirm.min_score or cand.score - best < self.confirm.t2_margin
-                or unexplained > self.confirm.max_unexplained):
+                or unexplained > self.confirm.max_unexplained or not ends_ok(cand, self.confirm)):
             return False
         undone = self.moves[-1].san
         self.undo(reread=False)
         self._set_reference(frame)
+        self._update_occupancy(frame)
         self.choices = []
         self.phase = Phase.PLAYING
         self.message = f"{undone} was taken back."
@@ -508,6 +510,8 @@ class GameSession:
         if self._moves_since_sync >= self.s.health.sync_every_moves:
             self._moves_since_sync = 0
             self.check_sync(frame)
+        else:
+            self._update_occupancy(frame)
         if self.board.is_game_over():
             outcome = self.board.outcome()
             winner = outcome.winner if outcome else None
@@ -515,10 +519,17 @@ class GameSession:
 
     # ------------------------------------------------------------------ health / player actions
 
+    def _update_occupancy(self, frame: np.ndarray) -> None:
+        """What the camera sees on each square (the Board window's dots), refreshed after every move."""
+        if self.cam is not None and self.occ_reader.templates:
+            self.occupancy = self.occ_reader.read(self.cal.warp(frame), self.cam, self.board)
+
     def check_sync(self, frame: np.ndarray) -> list[str]:
         if self.cam is None:
             return []
-        self.occupancy = self.occ_reader.read(self.cal.warp(frame), self.cam, self.board)
+        self._update_occupancy(frame)
+        if self.occupancy is None:
+            return []
         report = compare_occupancy(self.occupancy, self.board, self.s.health.sync_min_confidence)
         self.desync = self.sync.update(report)
         if self.desync:

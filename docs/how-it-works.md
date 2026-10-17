@@ -3,6 +3,7 @@
 ```
 camera ─▶ stream.py ─▶ session.py ──────────────────────────────────────────────────────┐
                         │ gating.py      is the board still?                              │
+                        │ tracking.py    did the camera shift? follow it                   │
                         │ reader.py      what changed since the last accepted position?    │
                         │ matcher.py     which legal move explains it best?   ◀─ geometry.py (camera model)
                         │ confirm.py     confident? re-read? ask?                          │
@@ -53,6 +54,11 @@ Goal: a homography `H` from camera pixels to an 800×800 top-down board (100 px 
   rotated wrongly but never mirrored. Rotation is fixed in step 4.
 - Fallback: click the 4 outer corners (with a zoom loupe). Saved to `calib/` as JSON plus reference
   images (raw frame, top-down view, edge map).
+- **At every game start** the board is found again in the starting position, because the saved
+  calibration is stale as soon as the camera has moved (live, it was 25–80 px off between runs, a
+  square being ~55 px). Both the board found now and the saved calibration are oriented (step 3),
+  and the one that lines the pieces up better wins. That guards against a detection that snapped
+  a rank off when tall pieces hide corners; on the real board the fresh one wins, e.g. 87 against 50.
 
 ## 3. Camera model — `geometry.py`
 
@@ -73,7 +79,8 @@ appears in the image.
   hide farther ones. Each pixel stores which piece (square + type + colour) is visible there.
 - **Orientation**: for each of the 4 possible rotations the starting position is rendered and the
   brightness of pixels predicted to be white pieces is compared with black ones. The right rotation
-  scores about +80 (gray levels); the wrong ones about −80 or near 0.
+  scores about +85 (gray levels); the wrong ones about −85 or near 0. A stale calibration scores
+  20–50.
 
 ## 4. Motion gate — `gating.py`
 
@@ -81,6 +88,16 @@ Each frame is cropped to the board region, shrunk to 240 px wide, blurred, and c
 previous one. If more than 0.4% of the board pixels changed by more than 18 gray levels, the board
 is **moving** (a hand, an arm). It becomes **stable** after 0.8 s and at least 2 frames without
 motion. The board is read once, at the moment it becomes stable.
+
+## 4b. Camera tracking — `tracking.py`
+
+Each time the board goes still (and right after you answer a question), ORB features in and
+around the board (piece tops, printed coordinates, board edge, table) are matched between the
+last accepted frame and the new one, and RANSAC fits the homography between them. If the board
+corners moved more than `health.track_min_px` (2 px), the calibration and the reference frame are
+moved with it, so a nudged or swaying camera needs no recalibration and a move made at the same
+time is still read. Ambiguous matches are dropped (ratio test): the checker pattern repeats every
+square, and a fit must not snap one square off. Shifts over 3 squares aren't trusted.
 
 ## 5. Change map — `reader.py`
 
@@ -112,8 +129,10 @@ score(move) = Σ over pixels p in M of   b(p) · ln(q_in / q_out)  +  (1 − b(p
 ```
 
 - `q_in` = 0.55: chance a pixel inside a moved piece's outline visibly changes (outlines are
-  approximate, and a white piece on a white square changes little).
+  approximate).
 - `q_out` = 0.03: noise rate.
+- A changed pixel inside the mask earns ln(0.55/0.03) ≈ +2.9; an unchanged pixel inside it costs
+  ln(0.45/0.97) ≈ −0.77.
 - `q_in` depends on what a pixel shows before and after the move. A black piece over a dark
   square (or white over light) changes far fewer pixels. How faint those pairs are is measured
   at game start from the colour distance between the learned black-piece and dark-square looks
@@ -125,67 +144,76 @@ score(move) = Σ over pixels p in M of   b(p) · ln(q_in / q_out)  +  (1 − b(p
   Off-board change the best move doesn't explain is reported as `off_board`: above
   `max_off_board` (3,000 px) a hand is nearby and nothing is auto-accepted. Smaller blobs there (a
   sleeve) don't count as unexplained, so they no longer block a clean move.
-- A changed pixel inside the mask earns ln(0.55/0.03) ≈ +2.9; an unchanged pixel inside it costs
-  ln(0.45/0.97) ≈ −0.77.
+- **Both ends.** For each move the evidence where the piece left and where it arrived (both
+  squares of the rook too when castling) is also kept separately, as the observed change rate
+  relative to the expected `q_in` there. A real move changes both ends. A sleeve lying over one
+  corner square changes only that one: on the real board a fake Kh1 changed g1, where the white
+  king supposedly left a dark square, at 0.16–0.43 of the expected rate, while every real move's
+  high-contrast ends reached at least 0.97. Faint (black-on-dark) ends are exempt, since a real
+  d6-d5 can change only 0.27 of its expected rate there.
 - Scores are in full-resolution pixel units, so thresholds don't depend on the work scale.
 
 Under-promotions are scored as queen promotions (they look identical to the camera) and decided
 afterwards.
 
-The result is the ranked list, the **margin** (best minus runner-up), and the **unexplained**
-share: change outside the best move's mask that forms piece-sized blobs. Speckle and thin lines are
-removed with a morphological opening about a third of a square wide, so a vinyl board's crease
-shifting doesn't count, but a second moved or bumped piece does.
+The result is the ranked list, the **margin** (best minus runner-up), the **unexplained** share
+(change on the board, outside the best move's mask, that forms piece-sized blobs), and the
+**off-board** change (blobs beyond the board edge the best move doesn't explain). Speckle and thin
+lines are removed with a morphological opening about a third of a square wide, so a vinyl board's
+crease shifting doesn't count, but a second moved or bumped piece does.
 
-Typical numbers on the real board: a clear pawn move scores about 3,100–3,500 with a margin over
-3,000. Still frames score about −2,700 for every move.
+Typical numbers on the real board (vinyl roll-up, camera ~75° above it):
+
+| Read | Best score | Margin |
+|---|---|---|
+| Nothing moved | about −800 | under 50 |
+| Clear moves (e4, Nf3, Bc4, O-O) | 4,000–19,000 | 1,800–8,000 |
+| Black pawn, dark square to dark square (e7-e5, c7-c5) | 500–1,000 | 1,500–1,800 |
+| Black bishop f8-e7 (dark to dark, back rank) | about 0 | about 1,000–1,400 |
 
 ## 7. Decisions and tiers — `session.py`, `confirm.py`
 
-When the board becomes still:
+When the board becomes still (after following any camera shift):
 
 1. Total change under `min_change_px` (900) → nothing happened.
-   **Takeback**: taking a move back by hand changes exactly the pixels the move changed, so the
-   change is also scored against the last move's own mask. If that beats every legal next move by
-   `t2_margin` (and explains the change), the move is undone; no key needed.
 2. More than 35% of the board changed → something covers the board; wait.
-3. No move scores at least `min_score` (500) → if one move still clearly stands out (positive
+3. **Takeback**: taking a move back by hand changes exactly the pixels the move changed, so the
+   change is also scored against the last move's own mask. If that beats every legal next move by
+   `t2_margin` (and explains the change, both ends included), the move is undone; no key needed.
+   This is checked even
+   when a next move looks confident: putting h5 back to h7 once looked like Qxh5.
+4. No move scores at least `min_score` (500) → if one move still clearly stands out (positive
    score, margin ≥ `t2_margin`) it's re-read as in tier 2, never dropped. Otherwise, if the change
    is small (under 6,000 px) it's lighting drift and is ignored; above that you're asked, with
    **X** available.
-4. **Tier 1**: score ≥ 500, margin ≥ 1,500 and unexplained ≤ 35% → accepted. On the real board,
-   still frames score about −800 with margins under 50; a faint black-on-dark e7-e5 scores
-   850–1,000 with a margin around 1,550.
-5. **Tier 2**: read 3 more still frames and average each move's score. Margin ≥ 800 → accepted. If
-   the next move starts before the re-reads finish, it decides with the reads it has.
-6. **Tier 3** (off by default): before/after photos and the top 3 moves go to a vision LLM (Anthropic
+5. **Tier 1**: score ≥ 500, margin ≥ 1,500, unexplained ≤ 35%, off-board change ≤ 3,000 px, and
+   every high-contrast end (expected rate ≥ `clear_end_q`, 0.45) changed at least `min_end_ratio`
+   (0.75) of what was expected → accepted.
+6. **Tier 2**: read 3 more still frames and average each move's score. Margin ≥ 800 (same score,
+   unexplained, off-board and both-ends limits) → accepted. If the next move starts before the re-reads
+   finish, it decides with the reads it has.
+7. **Tier 3** (off by default): before/after photos and the top 3 moves go to a vision LLM (Anthropic
    API, `claude-sonnet-5-5`), which must answer with one of the listed moves.
-7. **Tier 4**: the top 3 are drawn as numbered arrows; you press 1–3 or type it. The reference
+8. **Tier 4**: the top 3 are drawn as numbered arrows; you press 1–3 or type it. The reference
    becomes the frame from when the question was asked, so a move made in the meantime isn't lost,
    and it's read right after you answer. That frame may still show a hand: if the next still board
    isn't a clean move from it, the board as it is then becomes the reference. While a question is
-   open, a clean (tier 1) read of a later still board is accepted without an answer.
+   open, a clean (tier 1) read of a later still board is accepted without an answer, and a
+   takeback by hand closes the question.
 
 Stockfish is never consulted here, so a blunder is recorded as played.
 
 ## 8. Health checks — `health.py`
 
-- **Sync** (every 10 moves): the top-down view's square centres are classified as empty / white /
-  black, using colour templates learned from the starting position (empty light, empty dark, white
-  piece, black piece). Squares whose centre is hidden by another piece are skipped. A square that
-  confidently disagrees with the game on two checks in a row is flagged in red, with Z/T/X offered.
+- **Board window dots** (after every move, and at game start): the top-down view's square centres
+  are classified as empty / white / black, using colour templates learned from the starting
+  position (empty light, empty dark, white piece, black piece), and drawn as dots. Squares whose
+  centre is hidden by another piece are skipped.
+- **Sync** (every 10 moves): those readings are compared with the game. A square that confidently
+  disagrees on two checks in a row is flagged in red, with Z/T/X offered.
   Black pieces on dark squares are often too close to call; those are skipped rather than flagged.
-- **Camera tracking** (each time the board goes still): ORB features in and around the board
-  (piece tops, printed coordinates, board edge, table) are matched between the last accepted
-  frame and the new one, and RANSAC fits the homography between them (`tracking.py`). If the
-  board corners moved more than `health.track_min_px`, the calibration and the reference frame
-  are moved with it, so a nudged or swaying camera needs no recalibration and a move made at
-  the same time is still read. Ambiguous matches (the checker pattern repeats every square)
-  are dropped so the fit can't snap one square off.
-- **Re-detection at start**: the starting position always shows the empty middle ranks, so
-  each game re-finds the board instead of trusting `calib/`, which is stale once the camera moved.
-- **Drift** (every 10 s while still, if tracking couldn't explain it): edges of the top-down view are compared with the calibration
-  edge map. If under 45% of the reference edges are still within 4 px on 3 checks in a row, the game
+- **Drift** (every 10 s while still, only if camera tracking couldn't follow the shift): edges of
+  the top-down view are compared with the edge map from game start. If under 45% of the reference edges are still within 4 px on 3 checks in a row, the game
   pauses and asks you to recalibrate (**C**).
 
 ## 9. Promotion
@@ -199,6 +227,8 @@ promotion square and its colour matches. The most confident piece type wins; oth
 - **PGN**: standard tags, the moves, and a comment per move with the time and tier. Written to a
   temporary file and swapped in, after every move. A failed write is logged and retried; it never
   stops the game.
-- **Stockfish** runs in its own thread: 0.5 s per position, 3 lines, win/draw/loss when the engine
+- **Stockfish** is found from `engine.path`; if that file doesn't exist (a path written on another
+  computer), from `PATH`, the usual Homebrew/Linux locations, or an `engines/` folder in the
+  project. It runs in its own thread: 0.5 s per position, 3 lines, win/draw/loss when the engine
   supports it. Only the newest position is analysed. Results go to the Board window.
 - **Session recording**: every frame plus the moves and calibration, for `replay`.

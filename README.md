@@ -15,6 +15,8 @@ python-chess, shows Stockfish's evaluation live on the computer screen, and save
   camera and to pieces hiding each other.
 - Unsure moves are re-checked, then shown to you as 1/2/3 choices. **Stockfish never decides which
   move was played**, so blunders are recorded as played.
+- It copes with a camera that sways or gets nudged (it follows the board), black pieces on dark
+  squares, and moves you take back by hand (they're undone automatically).
 
 ---
 
@@ -35,23 +37,38 @@ python-chess, shows Stockfish's evaluation live on the computer screen, and save
 
 ## Quick start
 
-All commands are PowerShell, run from this folder (`chess-yolo-vision`).
+Run everything from this folder (`chess-yolo-vision`). Commands are shown for Windows
+(PowerShell) and macOS/Linux; the rest of the docs use the Windows form, so on macOS/Linux read
+`.\.venv\Scripts\python` as `.venv/bin/python` and `\` in paths as `/`.
 
-**1. Python environment** (Python 3.12; skip if `.venv` already exists)
+**1. Python environment** (Python 3.12 or newer; skip if `.venv` already exists)
 
 ```powershell
 py -3.12 -m venv .venv
 .\.venv\Scripts\python -m pip install -r requirements.txt
 ```
 
-**2. Stockfish.** Download Stockfish for Windows and put the path to the `.exe` in
-[config.yaml](config.yaml) under `engine.path`. (Leave it empty to play without analysis.)
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+```
+
+**2. Stockfish.** Put the path to the Stockfish program in [config.yaml](config.yaml) under
+`engine.path`. Windows: download it and use the `.exe`. macOS: `brew install stockfish`, then
+`/opt/homebrew/bin/stockfish` (Apple silicon) or `/usr/local/bin/stockfish` (Intel). If the
+configured path doesn't exist on this computer (say, a Windows path on a Mac), Stockfish is looked
+for on `PATH`, in those Homebrew folders and in an `engines/` folder here. Without Stockfish
+everything works except the eval bar and best moves (the log says `Stockfish not found`).
 
 **3. Camera.** Flash the ESP32 once ([docs/hardware.md](docs/hardware.md)), power it, and connect this
-PC's Wi-Fi to the open network **`ChessCam`**. Check it:
+computer's Wi-Fi to the open network **`ChessCam`**. Check it:
 
 ```powershell
 .\.venv\Scripts\python run.py check
+```
+
+```bash
+.venv/bin/python run.py check
 ```
 
 You should see `Camera set to SVGA 800x600` and `Stream OK`.
@@ -60,6 +77,10 @@ You should see `Camera set to SVGA 800x600` and `Stream OK`.
 
 ```powershell
 .\.venv\Scripts\python run.py play --start
+```
+
+```bash
+.venv/bin/python run.py play --start
 ```
 
 `--start` finds the board and starts the game automatically. Without it, press **S** once the
@@ -73,8 +94,8 @@ pieces are set up.
 |---|---|
 | Freenove ESP32-WROVER CAM (OV2640, 4 MB PSRAM) | Firmware: [firmware/CameraWebServer](firmware/CameraWebServer) |
 | Any normal chess board and set | Light squares and dark squares must contrast; tested on a roll-up vinyl board |
-| Camera mount | Above the board, looking down. Near-overhead works best (tall pieces hide less) |
-| PC | Windows 11, Python 3.12. A GPU is not needed |
+| Camera mount | Above the board, looking down. Near-overhead works best (tall pieces hide less). Small sways and nudges are followed automatically, but a mount that can't swing is best |
+| Computer | Windows 11 or macOS, Python 3.12 or newer. A GPU is not needed |
 
 The ESP32 makes its own Wi-Fi hotspot, `ChessCam`, and is always at `192.168.4.1`. Campus
 networks such as eduroam can't be used (they need a username login and block devices from
@@ -88,12 +109,16 @@ Arduino IDE settings, flashing, camera orientation and the camera speed problem 
 ## Playing a game
 
 1. Put the pieces in the starting position.
-2. Run `.\.venv\Scripts\python run.py play --start`. Two windows open: **Camera** and **Board**.
-3. Play normally. After each move, take your hand off the board; the move is read once the board has
-   been still for about a second.
+2. Run `play --start` (see [Quick start](#quick-start)). Two windows open: **Camera** and **Board**.
+   It finds the board in the starting position each time, so a camera that moved since last time
+   is fine.
+3. Play normally. After each move, take your hand off the board and away from its edges; the move is
+   read once the board has been still for about a second.
 4. If the **Board** window shows yellow arrows numbered 1–3, press the number of the move that was
-   played (or **T** to type it).
-5. End with **E** (you'll be asked the result in the terminal), or **R** if someone resigned.
+   played (or **T** to type it). If you just move your hand away instead, a clear re-read is
+   accepted without an answer.
+5. Changed your mind? Put the piece back where it was: the move is taken back automatically.
+6. End with **E** (you'll be asked the result in the terminal), or **R** if someone resigned.
 
 ### Keys (click a window first)
 
@@ -103,8 +128,8 @@ Arduino IDE settings, flashing, camera orientation and the camera speed problem 
 | 1 / 2 / 3 | Pick the move when asked |
 | T | Type a move in the terminal (`Nf3` or `g1f3`) |
 | X | "No move happened": accept the board as it looks now (e.g. you only straightened a piece) |
-| Z | Undo the last move (if the board still shows it, you'll be asked for the right one) |
-| C | Recalibrate (board or camera moved). Pieces can stay where they are |
+| Z | Undo the last move (if the board still shows it, you'll be asked for the right one). Not needed when you put a move back by hand |
+| C | Recalibrate, if the board or camera moved more than it can follow. Pieces can stay where they are |
 | E | End the game and enter the result |
 | R | Resign (enter who resigned) |
 | A | Abort the game (PGN kept, game marked unfinished) |
@@ -119,11 +144,11 @@ More detail: [docs/usage.md](docs/usage.md).
 
 | Output | Where | Notes |
 |---|---|---|
-| **Board** window | screen | Top-down board, last move arrow, dots for what the camera sees per square, large eval + best move + win/draw/loss %, move list, Stockfish's top 2 lines, eval bar |
+| **Board** window | screen | Top-down board, last move arrow, dots for what the camera sees per square (refreshed after every move; black pieces on dark squares often get none), large eval + best move + win/draw/loss %, move list, Stockfish's top 2 lines, eval bar |
 | **Camera** window | screen | Live camera, board outline, changed pixels in red, the outline of the move being considered, status line |
 | PGN | `exports/game_<date>_<time>.pgn` | Standard PGN, rewritten after every move; each move has a comment with its time and how it was confirmed |
 | Session recording | `sessions/<date>_<time>/` | Every frame (`frames/`), `frames.csv`, `moves.csv`, `calibration.json`. Used by `replay` |
-| Calibration | `calib/` | Board position in the camera image, reused until the board or camera moves |
+| Calibration | `calib/` | Board position in the camera image. Found again at each game start and followed when the camera shifts |
 | Log | `logs/run_<date>_<time>.log` | Everything, including each move read with its score |
 
 Training/review mode: set `engine.show_best_moves: false` to hide the best move and engine lines
@@ -141,22 +166,30 @@ frame ─▶ motion gate ─▶ change map (before vs after) ─▶ score every 
 
 1. **Calibration.** OpenCV finds the board's grid (all 49 inner corners on an empty board, or the
    empty middle four ranks of the starting position) and computes a homography to an 800×800
-   top-down view. The piece colours in the starting position tell which side white is on.
+   top-down view. This happens again at every game start; the saved calibration is kept only if it
+   lines the pieces up better. The piece colours in the starting position tell which side white is on.
 2. **Camera model.** From that homography the program recovers the camera's position and focal
    length, so it can predict the outline of a piece of any type standing on any square, including
    which pieces hide which.
 3. **Motion gate.** Consecutive frames are compared; the board is "still" after ~0.8 s and 2 frames
    without motion. A hand over the board is motion.
-4. **Change map.** The new still frame is compared with the frame from the last accepted move, after
-   correcting the camera's automatic brightness changes.
-5. **Move matching.** For every legal move, the pixels that move would change are predicted and
-   scored against the change map (a log-likelihood ratio). Castling, en passant and captures come
-   out naturally. The best move and its margin over the runner-up are kept.
-6. **Tiers.** 1: clear winner → accepted. 2: re-read a few more still frames and average.
-   3: (optional, off) ask a vision LLM. 4: ask you.
-7. **Health checks.** Every 10 moves the per-square colours are compared with the tracked game;
-   every 10 s the board edges are compared with calibration to catch a moved board or camera.
-8. **Promotion.** The piece type is the only thing read by the YOLO model (`models/pieces.pt`);
+4. **Camera tracking.** Each still frame is matched to the last accepted one (ORB features +
+   RANSAC). If the camera shifted, the calibration moves with it; no recalibration needed.
+5. **Change map.** The new still frame is compared with the frame from the last accepted move, after
+   correcting the camera's automatic brightness changes. Besides brightness and colour it compares
+   local texture, which is how a black piece on a dark square shows up.
+6. **Move matching.** For every legal move, the pixels that move would change are predicted and
+   scored against the change map (a log-likelihood ratio). How visible black-on-dark and
+   white-on-light are is measured on your board at game start. Castling, en passant and captures
+   come out naturally. The best move and its margin over the runner-up are kept.
+7. **Takebacks.** If the change looks exactly like the last move undone, it's taken back.
+8. **Tiers.** 1: clear winner → accepted. 2: re-read a few more still frames and average.
+   3: (optional, off) ask a vision LLM. 4: ask you. Nothing is accepted automatically while a hand
+   rests right next to the board, or unless both ends of the move changed (a sleeve over one
+   square isn't a move).
+9. **Health checks.** Every 10 moves the per-square colours are compared with the tracked game;
+   every 10 s the board edges are checked to catch a move of the board or camera too big to follow.
+10. **Promotion.** The piece type is the only thing read by the YOLO model (`models/pieces.pt`);
    default is a queen.
 
 Full explanation with the maths: [docs/how-it-works.md](docs/how-it-works.md).
@@ -178,10 +211,11 @@ chess-yolo-vision/
 │   ├── calibration.py      board detection, homography, manual corner clicking
 │   ├── geometry.py         camera model, piece outlines, orientation from piece colours
 │   ├── gating.py           motion gate
-│   ├── reader.py           change map, per-square occupancy, YOLO wrapper
+│   ├── reader.py           change map (colour + texture), per-square occupancy, YOLO wrapper
 │   ├── matcher.py          legal-move scoring
 │   ├── confirm.py          tiers 1–4
 │   ├── health.py           sync and drift checks
+│   ├── tracking.py         follows camera shifts (feature matching between frames)
 │   ├── engine.py           Stockfish in a background thread
 │   ├── storage.py          PGN writer
 │   ├── replay.py           replay a recorded session and score it against a PGN
@@ -210,6 +244,8 @@ likely to touch:
 | `engine.path` | your Stockfish | Empty disables analysis |
 | `engine.show_best_moves` | `true` | `false` = training mode |
 | `confirm.t1_margin` | `1500` | How clearly a move must win to be accepted without asking |
+| `reader.texture_weight` | `5` | How much texture counts in the change map (black pieces on dark squares) |
+| `health.track_min_px` | `2` | Camera shifts larger than this are followed |
 | `storage.white` / `black` | `White` / `Black` | Player names in the PGN |
 | `llm.enabled` | `false` | Tier 3; needs `ANTHROPIC_API_KEY` in a `.env` file |
 
@@ -223,9 +259,11 @@ Every setting is explained in [docs/configuration.md](docs/configuration.md).
 .\.venv\Scripts\python -m pytest tests -q
 ```
 
-19 tests: calibration (corner extrapolation, never mirroring, save/load), the frame reader, move
-matching on synthetic camera scenes (captures, both castles, en passant, promotion, missed moves),
-and a full recorded game replayed end to end.
+33 tests: calibration (corner extrapolation, never mirroring, save/load), the frame reader, the
+change map (black on dark, nudged edges, exposure), move matching on synthetic camera scenes
+(captures, both castles, en passant, promotion, missed moves, faint black-on-dark moves), finding
+Stockfish, and whole recorded games replayed end to end, including a bumped camera, moves taken
+back by hand, and a hand or sleeve resting beside or on the board's edge.
 
 **Replay a real game** to measure accuracy after changing anything:
 
@@ -241,13 +279,17 @@ rate and the number of **wrong accepts** (target: 0). Details and current result
 
 ## Status and known limitations
 
-- Working: camera control, automatic calibration with pieces on the board, orientation, motion
-  gating, move matching, tiers, PGN, Stockfish display, replay harness.
-- **Being verified on the real board:** a full game. The first real move (e4) was read correctly;
-  a too-strict confidence check made it ask instead of auto-accepting, which is fixed.
-- **Camera speed:** about 0.4–2.5 frames per second with occasional stalls. The ESP32 itself is the
+- Working: camera control, automatic calibration with pieces on the board, orientation, camera
+  tracking, motion gating, move matching (including black on dark squares), takebacks by hand,
+  tiers, PGN, Stockfish display, replay harness.
+- **Real games:** four recorded games (up to 20 plies, two with takebacks by hand) replay with the
+  board state right on every still frame and no wrong accepts. Questions remain only while a hand
+  or sleeve rests on or right beside the board. See [docs/testing.md](docs/testing.md).
+- **Camera speed:** about 0.4–5 frames per second with occasional stalls. The ESP32 itself is the
   bottleneck ([docs/hardware.md](docs/hardware.md#camera-speed)). It slows down move reading, it
   doesn't cause wrong moves.
+- **Camera mount:** small sways are followed, but a big jump (or the board covered while it moves)
+  still needs **C**.
 - Black pieces on dark squares are hard for the per-square health check (not for move reading).
 - Under-promotion relies on the YOLO model, which recognises this set poorly; default is a queen,
   and you can correct it with Z and T.

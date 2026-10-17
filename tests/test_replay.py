@@ -202,3 +202,38 @@ def test_sleeve_beside_the_board_does_not_block_a_clean_move(tmp_path):
                                                 outer=OVERHEAD, dark_square=(34, 36, 38), outline=(48, 48, 50))
     session = _play(settings, cal, frames)
     assert [m.uci() for m in session.board.move_stack] == ["e2e4", "c7c5"]
+
+
+def test_sleeve_over_a_corner_square_is_not_a_move(tmp_path):
+    """Live: a sweater sleeve lying over h1 (king on g1) was read as Kh1; the king never left g1."""
+    settings = Settings()
+    settings.engine.enabled = False
+    settings.storage.exports_dir = str(tmp_path / "exports")
+    cal, frames = _session_with_hand_off_board(tmp_path, (8.0, 8.0), (46, 34),
+                                                ["e4", "c5", "Nf3", "d6", "Bc4", "Nf6", "O-O", "a6"], outer=OVERHEAD)
+    session = _play(settings, cal, frames)
+    assert [m.uci() for m in session.board.move_stack] == ["e2e4", "c7c5", "g1f3", "d7d6", "f1c4", "g8f6",
+                                                           "e1g1", "a7a6"]
+
+
+def test_board_dots_follow_every_move(tmp_path):
+    """The Board window's per-square dots showed up only at the 10-ply health check, then froze."""
+    from chessreader.calibration import Calibration
+    from chessreader.replay import frames_from
+    from chessreader.session import GameSession
+
+    folder, _ = write_session(tmp_path, ["e4", "c5"], seed=2, still_frames=5)
+    settings = Settings()
+    settings.engine.enabled = False
+    settings.storage.exports_dir = str(tmp_path / "exports")
+    frames = list(frames_from(folder))
+    session = GameSession(settings, Calibration.from_json(json.loads((folder / "calibration.json").read_text())))
+    assert session.start_game(frames[0][0]) is None
+    assert session.occupancy is not None
+    seen = []
+    for image, ts, _ in frames[1:]:
+        before = len(session.moves)
+        session.process(image, ts)
+        if len(session.moves) != before:
+            seen.append(session.occupancy.copy())
+    assert len(seen) == 2 and not np.array_equal(seen[0], seen[1], equal_nan=True)

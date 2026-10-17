@@ -40,6 +40,14 @@ class Candidate:
     score: float
     mask_px: float      # predicted-change area (full-res px)
     explained: float    # observed change inside the mask (full-res px)
+    left: float = 0.0     # evidence on the board where the piece was (log-likelihood, full-res px)
+    arrived: float = 0.0  # ... and where it now stands
+    # observed change rate at each end relative to the rate expected there (q_in for those pixels):
+    # about 1 for a real move, near 0 for an end that didn't change (a sleeve over the other end)
+    left_ratio: float = 1.0
+    arrived_ratio: float = 1.0
+    left_q: float = 0.0      # expected change rate at each end: high where the piece contrasts with
+    arrived_q: float = 0.0   # what's behind it, low for black on dark / white on light
 
 
 @dataclass
@@ -124,8 +132,24 @@ class MoveMatcher:
     def tones(self, labels: np.ndarray) -> np.ndarray:
         return np.where(labels > 0, self._piece_tone[np.maximum(labels, 0)], self.floor)
 
-    def _candidate(self, move: chess.Move, mask: np.ndarray, before_tones: np.ndarray, after_labels: np.ndarray,
-                   change: np.ndarray) -> Candidate:
+    @staticmethod
+    def _moving_squares(board: chess.Board, move: chess.Move) -> tuple[set[int], set[int]]:
+        """Squares the moving pieces leave and reach (the rook too when castling)."""
+        left, reached = {move.from_square}, {move.to_square}
+        if board.is_castling(move):
+            rank = chess.square_rank(move.from_square)
+            kingside = chess.square_file(move.to_square) > chess.square_file(move.from_square)
+            left.add(chess.square(7 if kingside else 0, rank))
+            reached.add(chess.square(5 if kingside else 3, rank))
+        return left, reached
+
+    @staticmethod
+    def _label_squares(labels: np.ndarray) -> np.ndarray:
+        """Square of the piece visible at each pixel, -1 where none."""
+        return np.where(labels > 0, (labels.astype(np.int32) - 1) // 12, -1)
+
+    def _candidate(self, board: chess.Board, move: chess.Move, mask: np.ndarray, before_labels: np.ndarray,
+                   before_tones: np.ndarray, after_labels: np.ndarray, change: np.ndarray) -> Candidate:
         pair = before_tones[mask].astype(np.intp) * 5 + self.tones(after_labels)[mask]
         b = change[mask]
         llr = b * self._pair_reward[pair] + (1.0 - b) * self._pair_penalty[pair]
@@ -133,7 +157,21 @@ class MoveMatcher:
         on_score = float(llr[on].sum())
         off_score = float(llr[~on].sum()) * self.off_board_weight
         score = (on_score + min(off_score, max(on_score, 0.0))) * self.px
-        return Candidate(move, score, float(mask.sum()) * self.px, float(b.sum()) * self.px)
+        # a hand or sleeve resting on one square can look like a piece arriving there; a real move
+        # also changes the square the piece left (and the reverse for a piece only lifted away)
+        left_sq, reached_sq = self._moving_squares(board, move)
+        was = np.isin(self._label_squares(before_labels)[mask], list(left_sq)) & on
+        now = np.isin(self._label_squares(after_labels)[mask], list(reached_sq)) & on
+        q = self._q.ravel()[pair]
+
+        def ratio(sel: np.ndarray) -> float:
+            return float(b[sel].mean() / q[sel].mean()) if sel.any() else 1.0
+
+        return Candidate(move, score, float(mask.sum()) * self.px, float(b.sum()) * self.px,
+                         left=float(llr[was].sum()) * self.px, arrived=float(llr[now].sum()) * self.px,
+                         left_ratio=ratio(was), arrived_ratio=ratio(now),
+                         left_q=float(q[was].mean()) if was.any() else 0.0,
+                         arrived_q=float(q[now].mean()) if now.any() else 0.0)
 
     def unexplained_blobs(self, change: np.ndarray, mask: np.ndarray) -> float:
         """Observed change outside the move's mask that forms piece-sized blobs (full-res px).
@@ -169,7 +207,7 @@ class MoveMatcher:
         change = np.where(self.region, change, 0.0).astype(np.float32)
         before = self.render(board)
         mask, after = self._after(before, board, move)
-        cand = self._candidate(move, mask, self.tones(before), after, change)
+        cand = self._candidate(board, move, mask, before, self.tones(before), after, change)
         total = float(change.sum()) * self.px  # all of it: a hand resting off the board still counts
         return cand, (self.unexplained_blobs(change, mask) / total if total > 0 else 0.0)
 
@@ -191,7 +229,7 @@ class MoveMatcher:
                 continue  # under-promotions look the same to the camera; decided separately
             mask, after = self._after(before, board, move)
             masks[move] = mask
-            candidates.append(self._candidate(move, mask, before_tones, after, change))
+            candidates.append(self._candidate(board, move, mask, before, before_tones, after, change))
         candidates.sort(key=lambda c: c.score, reverse=True)
         result = MatchResult(candidates, total)
         if candidates:

@@ -61,8 +61,9 @@ The PC gets an address like 192.168.4.2.
   networks block devices from reaching each other.
 - While the PC's Wi-Fi is on `ChessCam` it has no internet over Wi-Fi. A wired Ethernet connection
   keeps working at the same time.
-- Windows sometimes rejoins another network after the ESP32 restarts. If the camera stops, check
-  that Wi-Fi is still on `ChessCam`.
+- Windows and macOS sometimes rejoin another network after the ESP32 restarts (macOS also when
+  `ChessCam` has no internet). If the camera stops, check that Wi-Fi is still on `ChessCam`; the
+  log says which network the computer is on.
 
 ### Camera endpoints
 
@@ -79,7 +80,8 @@ VGA 640×480 = 10, **SVGA 800×600 = 11** (used), XGA 1024×768 = 12. The progra
 checks the size of the image it gets back.
 
 `firmware/CameraWebServer/snapshot.py` is a small standalone tool that saves snapshots:
-`.\.venv\Scripts\python firmware\CameraWebServer\snapshot.py 192.168.4.1 -n 5 -d 1`.
+`.\.venv\Scripts\python firmware\CameraWebServer\snapshot.py 192.168.4.1 -n 5 -d 1`
+(macOS/Linux: `.venv/bin/python firmware/CameraWebServer/snapshot.py 192.168.4.1 -n 5 -d 1`).
 
 ## Mounting and orientation
 

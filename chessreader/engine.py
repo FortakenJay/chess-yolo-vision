@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import threading
 from dataclasses import dataclass, field
+import shutil
 from pathlib import Path
 from typing import Callable
 
@@ -55,6 +56,32 @@ def _san_line(board: chess.Board, moves: list[chess.Move]) -> list[str]:
         out.append(b.san(move))
         b.push(move)
     return out
+
+
+# where Stockfish usually ends up: Homebrew (Apple silicon, Intel), Linux packages, this project
+_COMMON_PATHS = ("/opt/homebrew/bin/stockfish", "/usr/local/bin/stockfish", "/usr/games/stockfish",
+                 "/usr/bin/stockfish")
+
+
+def find_stockfish(configured: str | Path | None) -> str | None:
+    """The configured Stockfish if it exists, else one on PATH or in a usual place.
+
+    config.yaml may hold a path from another computer (a Windows .exe on a Mac); falling back
+    keeps analysis working without editing it.
+    """
+    if configured and Path(configured).exists():
+        return str(configured)
+    from .settings import PROJECT_DIR
+
+    candidates = [shutil.which("stockfish")]
+    candidates += _COMMON_PATHS
+    candidates += sorted(str(p) for p in (PROJECT_DIR / "engines").glob("stockfish*") if p.is_file())
+    for candidate in candidates:
+        if candidate and Path(candidate).exists():
+            if configured:
+                logger.info("Stockfish not at %s; using %s", configured, candidate)
+            return candidate
+    return None
 
 
 class EngineWorker:

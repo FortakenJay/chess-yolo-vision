@@ -24,7 +24,7 @@ Use another file with `--config <file>`.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `dir` | `calib` | Where the calibration is saved |
+| `dir` | `calib` | Where the calibration is saved. Each game start finds the board again and keeps whichever fits better |
 | `warp_size` | `800` | Top-down view size in px (must divide by 8) |
 | `detect_attempts` | `5` | Frames tried per automatic detection |
 | `max_reprojection_px` | `4.0` | Largest acceptable fit error, in top-down pixels (100 per square) |
@@ -63,6 +63,8 @@ Use another file with `--config <file>`.
 | `t1_margin` | `1500` | Accept immediately when the best move beats the runner-up by this much |
 | `t2_margin` | `800` | Same, after averaging the re-reads |
 | `max_unexplained` | `0.35` | Largest share of the change, in piece-sized blobs, the best move may leave unexplained (on the board) |
+| `min_end_ratio` | `0.75` | Where a piece clearly contrasts with what's behind it, each end of a move must change at least this share of the expected rate. Stops a sleeve over one square from passing as a move |
+| `clear_end_q` | `0.45` | An end counts as clearly contrasting when its expected change rate (`q_in` there) is at least this; black-on-dark ends are exempt |
 | `max_off_board` | `3000` | Change beyond the board edge, in blobs the best move doesn't explain, above which a hand is assumed and nothing is auto-accepted |
 | `vote_frames` | `3` | Extra still frames read in tier 2 |
 
@@ -82,15 +84,16 @@ the margins of real moves before changing it.
 |---|---|---|
 | `sync_every_moves` | `10` | Compare the camera's view of each square with the game every N moves |
 | `sync_min_confidence` | `0.9` | Only confident square readings can flag a mismatch |
-| `drift_every_s` | `10` | Check whether the board or camera moved |
-| `drift_threshold` | `0.45` | Share of calibration edges that must still match |
+| `track_min_px` | `2` | Follow the camera when the board corners shift more than this (px); see camera tracking |
+| `drift_every_s` | `10` | Check whether the board or camera moved more than tracking could follow |
+| `drift_threshold` | `0.45` | Share of the game-start edges that must still match |
 
 ## engine — Stockfish
 
 | Key | Default | Meaning |
 |---|---|---|
 | `enabled` | `true` | |
-| `path` | your Stockfish `.exe` | Empty: no analysis |
+| `path` | your Stockfish | Windows: the `.exe`; macOS (Homebrew): `/opt/homebrew/bin/stockfish`. If the file doesn't exist (e.g. a Windows path on a Mac), Stockfish is looked for on `PATH`, in `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/games`, `/usr/bin` and in `engines/` in the project |
 | `think_time_s` | `0.5` | Time per position |
 | `multipv` | `3` | Lines analysed (2 are shown) |
 | `show_best_moves` | `true` | `false` = training/review mode: hide best move and lines until the game ends |

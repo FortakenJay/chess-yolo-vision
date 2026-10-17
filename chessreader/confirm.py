@@ -39,13 +39,27 @@ class ConfirmSettings:
     t2_margin: float = 800.0         # same, after averaging the re-reads
     max_unexplained: float = 0.35    # share of the change in piece-sized blobs the best move leaves unexplained
     max_off_board: float = 3000.0    # more change than this in blobs beyond the board edge = a hand is there
+    min_end_ratio: float = 0.75      # where a piece clearly contrasts with its square, both ends of the move
+    clear_end_q: float = 0.45        # must change at least this share of the expected rate (q_in >= clear_end_q)
     vote_frames: int = 3             # extra still frames to read in tier 2
+
+
+def ends_ok(cand: Candidate, cfg: ConfirmSettings) -> bool:
+    """Both ends of the move changed as much as their contrast says they must.
+
+    A sleeve resting over one corner square can look like a piece arriving there, but the square
+    the piece supposedly left stays as it was. Black-on-dark ends are allowed to stay faint.
+    """
+    return all(ratio >= cfg.min_end_ratio for ratio, q in ((cand.left_ratio, cand.left_q),
+                                                           (cand.arrived_ratio, cand.arrived_q))
+               if q >= cfg.clear_end_q)
 
 
 def tier1_ok(result: MatchResult, cfg: ConfirmSettings) -> bool:
     best = result.best
     return (best is not None and best.score >= cfg.min_score and result.margin >= cfg.t1_margin
-            and result.unexplained <= cfg.max_unexplained and result.off_board <= cfg.max_off_board)
+            and result.unexplained <= cfg.max_unexplained and result.off_board <= cfg.max_off_board
+            and ends_ok(best, cfg))
 
 
 def average_results(results: list[MatchResult]) -> MatchResult:
@@ -61,6 +75,12 @@ def average_results(results: list[MatchResult]) -> MatchResult:
             score=float(np.mean([c.score for c in cands])),
             mask_px=float(np.mean([c.mask_px for c in cands])),
             explained=float(np.mean([c.explained for c in cands])),
+            left=float(np.mean([c.left for c in cands])),
+            arrived=float(np.mean([c.arrived for c in cands])),
+            left_ratio=float(np.mean([c.left_ratio for c in cands])),
+            arrived_ratio=float(np.mean([c.arrived_ratio for c in cands])),
+            left_q=float(np.mean([c.left_q for c in cands])),
+            arrived_q=float(np.mean([c.arrived_q for c in cands])),
         ))
     merged.sort(key=lambda c: c.score, reverse=True)
     total = float(np.mean([r.total_change for r in results]))
@@ -76,7 +96,8 @@ def average_results(results: list[MatchResult]) -> MatchResult:
 def tier2_ok(result: MatchResult, cfg: ConfirmSettings) -> bool:
     best = result.best
     return (best is not None and best.score >= cfg.min_score and result.margin >= cfg.t2_margin
-            and result.unexplained <= cfg.max_unexplained and result.off_board <= cfg.max_off_board)
+            and result.unexplained <= cfg.max_unexplained and result.off_board <= cfg.max_off_board
+            and ends_ok(best, cfg))
 
 
 class LlmJudge:

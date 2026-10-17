@@ -62,6 +62,8 @@ confirm:                     # tiers (scores are in full-resolution pixels)
   t2_margin: 800.0           # same, after averaging the re-reads
   max_unexplained: 0.35      # share of the change left in piece-sized blobs the best move does not explain
   max_off_board: 3000.0      # change in blobs beyond the board edge above this = a hand is there; don't auto-accept
+  min_end_ratio: 0.75        # where a piece contrasts with its square, both ends of a move must change this much (x expected)
+  clear_end_q: 0.45          # ...an end counts as contrasting when its expected change rate is at least this
   vote_frames: 3             # extra still frames read in tier 2
 
 llm:                         # tier 3, off: needs ANTHROPIC_API_KEY in .env
