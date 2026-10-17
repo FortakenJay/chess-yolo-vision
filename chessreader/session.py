@@ -271,6 +271,30 @@ class GameSession:
         logger.info("Move %d (%s) was taken back on the board", len(self.moves) + 1, undone)
         return True
 
+    def _adjusted(self, result: MatchResult, frame: np.ndarray) -> bool:
+        """A piece was straightened or nudged in place (e.g. one knocked over): no move, no question."""
+        adj = self.matcher.best_adjustment(self.board, self.last_change)
+        if adj is None:
+            return False
+        square, score, unexplained = adj
+        best = result.best.score if result.best else 0.0
+        # half the tier-2 margin: the destination check below already rules the move out
+        if (score < self.confirm.min_score or score - best < self.confirm.t2_margin / 2
+                or unexplained > self.confirm.max_unexplained or result.off_board > self.confirm.max_off_board):
+            return False
+        # only when the piece's likeliest move would have had to show up clearly where it went and
+        # didn't: a black piece arriving on a dark square can look like nothing arrived
+        moves = [c for c in result.candidates if c.move.from_square == square]
+        if moves and not (moves[0].arrived_q >= self.confirm.clear_end_q
+                          and moves[0].arrived_ratio < self.confirm.min_end_ratio):
+            return False
+        logger.info("Piece on %s adjusted in place (%.0f vs best move %.0f); no move",
+                    chess.square_name(square), score, best)
+        self._set_reference(frame)
+        self._update_occupancy(frame)
+        self.message = f"Piece on {chess.square_name(square)} adjusted; no move."
+        return True
+
     def _white_side(self) -> str:
         """Where white sits in the camera image, in words (for the LLM and the HUD)."""
         x, y = self.cam.project(np.array([[4.0, 8.0, 0.0]]))[0]   # middle of white's back edge
@@ -346,6 +370,10 @@ class GameSession:
                     self._accept(result.best.move, Tier.AUTO, result, frame)
                 elif self._took_back(result, frame):
                     self.choices = []
+                elif self._adjusted(result, frame):
+                    self.choices = []
+                    self._ask_frame = None
+                    self.phase = Phase.PLAYING
             return
         if self.phase == Phase.VOTING:
             if update.state == GateState.MOVING:
@@ -392,6 +420,8 @@ class GameSession:
             return
         if self._took_back(result, frame):
             return
+        if self._adjusted(result, frame):
+            return
         if result.best is None or result.best.score < self.confirm.min_score:
             if result.best is not None and result.best.score > 0 and result.margin >= self.confirm.t2_margin:
                 # weak but clearly the best explanation (black on dark squares): re-read, never drop it
@@ -399,6 +429,12 @@ class GameSession:
                 self._vote_frame = frame
                 self.phase = Phase.VOTING
                 self.message = f"Faint change ({result.best.move.uci()}); re-reading..."
+                return
+            if result.off_board >= self.confirm.wait_off_board:
+                # no move fits and the change runs off the board's edge: a sleeve or hand resting there
+                self.message = "Something is resting at the board's edge; waiting."
+                logger.debug("waiting: %.0fpx changed, %.0fpx of it beyond the board edge",
+                             result.total_change, result.off_board)
                 return
             if result.total_change < r.unexplained_alarm_px:
                 # e.g. lighting / exposure drift: no move explains it, so nothing happened

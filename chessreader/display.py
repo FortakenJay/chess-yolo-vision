@@ -96,7 +96,7 @@ def draw_occupancy(warp: np.ndarray, probs: np.ndarray | None) -> None:
             if np.isnan(p).any():
                 continue
             k = int(np.argmax(p))
-            if k == 0:
+            if k == 0 or p[k] < 0.6:  # empty, or too unsure to show
                 continue
             center = (int((c + 0.5) * sq), int((r + 0.5) * sq))
             fill = (240, 240, 240) if k == 1 else (20, 20, 20)

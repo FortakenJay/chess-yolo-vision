@@ -39,6 +39,7 @@ class ConfirmSettings:
     t2_margin: float = 800.0         # same, after averaging the re-reads
     max_unexplained: float = 0.35    # share of the change in piece-sized blobs the best move leaves unexplained
     max_off_board: float = 3000.0    # more change than this in blobs beyond the board edge = a hand is there
+    wait_off_board: float = 1000.0   # when no move fits, this much beyond the edge = a sleeve resting; wait, don't ask
     min_end_ratio: float = 0.75      # where a piece clearly contrasts with its square, both ends of the move
     clear_end_q: float = 0.45        # must change at least this share of the expected rate (q_in >= clear_end_q)
     vote_frames: int = 3             # extra still frames to read in tier 2

@@ -211,6 +211,29 @@ class MoveMatcher:
         total = float(change.sum()) * self.px  # all of it: a hand resting off the board still counts
         return cand, (self.unexplained_blobs(change, mask) / total if total > 0 else 0.0)
 
+    def best_adjustment(self, board: chess.Board, change: np.ndarray) -> tuple[int, float, float] | None:
+        """(square, score, unexplained share) for 'one piece was only straightened or nudged in place'.
+
+        The mask is that piece's visible outline, a little wider since a tipped or shifted piece
+        doesn't sit exactly in it. A move by that piece would also have to change its destination;
+        when the destination didn't change, this explains the change better.
+        """
+        change = np.where(self.region, change, 0.0).astype(np.float32)
+        total = float(change.sum()) * self.px
+        if total <= 0:
+            return None
+        llr = change * self.reward + (1.0 - change) * self.penalty
+        squares = self._label_squares(self.render(board))
+        best = None
+        for sq in board.piece_map():
+            mask = cv2.dilate((squares == sq).astype(np.uint8), self._blob_kernel) > 0
+            if not mask.any():
+                continue
+            score = float(llr[mask].sum()) * self.px
+            if best is None or score > best[1]:
+                best = (sq, score, self.unexplained_blobs(change, mask) / total)
+        return best
+
     def match(self, board: chess.Board, change: np.ndarray) -> MatchResult:
         """change: change probability map over the ROI at the work scale."""
         if change.shape != self.region.shape:

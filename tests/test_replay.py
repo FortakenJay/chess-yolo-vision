@@ -237,3 +237,46 @@ def test_board_dots_follow_every_move(tmp_path):
         if len(session.moves) != before:
             seen.append(session.occupancy.copy())
     assert len(seen) == 2 and not np.array_equal(seen[0], seen[1], equal_nan=True)
+
+
+def test_pawn_stood_back_up_is_not_a_move(tmp_path):
+    """Live: the b2 pawn lay on its side at the start; standing it up asked '1) b4 2) b3 3) h3'."""
+    from chessreader.session import GameSession, Phase
+
+    cal, cam = make_camera(OVERHEAD)
+    rng = np.random.default_rng(5)
+    board = chess.Board()
+    tipped = board.copy()
+    tipped.remove_piece_at(chess.B2)
+    x, y = cam.project(np.array([[1.5, 6.5, 0.0]]))[0]
+    frames, t = [], 0.0
+
+    def add(b, n, lying=False, hand_over=None):
+        nonlocal t
+        for _ in range(n):
+            img = render(cam, cal, b, rng, light_square=(248, 250, 248), dark_square=(70, 72, 74))
+            if lying:  # the pawn on its side
+                cv2.ellipse(img, (int(x) + 6, int(y)), (24, 10), 15, 0, 360, (215, 220, 220), -1)
+                cv2.ellipse(img, (int(x) + 6, int(y)), (24, 10), 15, 0, 360, (110, 110, 110), 1)
+            if hand_over is not None:
+                hx, hy = cam.project(np.array([[*hand_over, -1.0]]))[0]
+                cv2.ellipse(img, (int(hx), int(hy)), (70, 45), 20, 0, 360, (120, 150, 200), -1)
+            frames.append((img, t))
+            t += 1.2
+
+    add(tipped, 4, lying=True)
+    add(tipped, 2, lying=True, hand_over=(1.5, 6.5))   # the hand picks it up...
+    add(board, 6)                                       # ...and it stands on b2 again
+    add(board, 2, hand_over=(4.5, 6.5))
+    board.push_san("e4")
+    add(board, 6)
+
+    settings = Settings()
+    settings.engine.enabled = False
+    settings.storage.exports_dir = str(tmp_path / "exports")
+    session = GameSession(settings, cal)
+    assert session.start_game(frames[0][0]) is None
+    for image, ts in frames[1:]:
+        session.process(image, ts)
+        assert session.phase != Phase.ASK_USER, f"asked about {session.choices}"
+    assert [m.uci() for m in session.board.move_stack] == ["e2e4"]

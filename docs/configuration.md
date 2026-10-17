@@ -63,6 +63,7 @@ Use another file with `--config <file>`.
 | `t1_margin` | `1500` | Accept immediately when the best move beats the runner-up by this much |
 | `t2_margin` | `800` | Same, after averaging the re-reads |
 | `max_unexplained` | `0.35` | Largest share of the change, in piece-sized blobs, the best move may leave unexplained (on the board) |
+| `wait_off_board` | `1000` | When no legal move fits and at least this much change lies beyond the board edge, a sleeve or hand is resting there: wait instead of asking |
 | `min_end_ratio` | `0.75` | Where a piece clearly contrasts with what's behind it, each end of a move must change at least this share of the expected rate. Stops a sleeve over one square from passing as a move |
 | `clear_end_q` | `0.45` | An end counts as clearly contrasting when its expected change rate (`q_in` there) is at least this; black-on-dark ends are exempt |
 | `max_off_board` | `3000` | Change beyond the board edge, in blobs the best move doesn't explain, above which a hand is assumed and nothing is auto-accepted |

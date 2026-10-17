@@ -42,7 +42,9 @@ and unexplained share.
 | It asks while your hand rests next to the board | Expected: change beyond the board edge above `confirm.max_off_board` means a hand is there, so nothing is accepted automatically. Move the hand away; a clear re-read then answers the question by itself |
 | A black move between two dark squares needs confirming | It's faint to this camera. The log shows `black pieces on dark squares: contrast N, q_in Q` at game start. Better, more even light helps most; raising `reader.texture_weight` a little (default 5) can too. Check with `replay` that no extra questions appear |
 | A move appeared that nobody made | Usually a sleeve or hand lying over a square near the edge. Both ends of a move must now change, so this should come up as a question instead; if it still happens, keep the session folder: replay reproduces it exactly |
-| The dots on the Board window lag behind | They're refreshed after every move; black pieces on dark squares often get no dot (too close to call), which is expected |
+| Dots on empty squares, or missing on pieces | Dots are refreshed after every move and drawn only when the reading is at least 60% sure. Something resting on a square (a sleeve, a shadow) really does read as occupied. If dots are wrong on a clear board, start a new game (**N**) so the looks are learned again in the current light |
+| It asks after you only straightened a piece | Straightening is recognised on its own when the piece's move would have shown clearly where it went (`adjusted in place` in the log). If it still asks, press **X** |
+| "Something is resting at the board's edge; waiting." | No move fits and the change runs off the board: move the sleeve or hand away |
 | Promotion recorded as a queen but it was a knight | **Z**, then **T** `e8=N` (for example) |
 | Keys do nothing | Click one of the program's windows first |
 

@@ -63,3 +63,22 @@ def test_exposure_fit_thrown_off_does_not_shift_every_pixel():
     untouched = np.ones(diff.shape, bool)
     cv2.circle(untouched.view(np.uint8), (30, 30), 30, 0, -1)
     assert float(np.median(diff[untouched])) < 5
+
+
+def test_shaded_empty_square_at_the_edge_reads_empty():
+    """Live: empty a6 at the board's shaded edge was as dark as a white piece, so it got a white dot."""
+    import chess
+
+    from chessreader.reader import OccupancyReader
+    from tests.scene import OVERHEAD, make_camera, render
+
+    cal, cam = make_camera(OVERHEAD)
+    board = chess.Board()
+    occ = OccupancyReader()
+    warped = cal.warp(render(cam, cal, board, np.random.default_rng(0), noise=1.5))
+    occ.fit(warped, cam, board)
+    shaded = warped.copy()
+    a6 = shaded[200:300, 0:100].astype(np.int16)  # row 2 = rank 6, column 0 = a-file
+    shaded[200:300, 0:100] = np.clip(a6 - 18, 0, 255).astype(np.uint8)  # edge shading
+    probs = occ.read(shaded, cam, board)
+    assert int(np.argmax(probs[2, 0])) == 0  # empty

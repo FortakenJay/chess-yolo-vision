@@ -10,15 +10,15 @@
 .venv/bin/python -m pytest tests -q          # macOS / Linux
 ```
 
-No camera needed. 33 tests:
+No camera needed. 35 tests:
 
 | File | Covers |
 |---|---|
 | `tests/test_calibration.py` | Outer corners extrapolated from the 49 inner corners (within 2 px), never mirroring (also on a mirrored image), corner ordering, manual corners, rotation, save/load, wrong frame size |
 | `tests/test_stream.py` | Frame size names, the frame reader keeps only the newest frame |
-| `tests/test_reader.py` | The change map sees a black piece on a dark square (texture), ignores a square edge nudged by 1–2 px, and an exposure fit thrown off by a hand doesn't shift every pixel |
+| `tests/test_reader.py` | The change map sees a black piece on a dark square (texture), ignores a square edge nudged by 1–2 px, and an exposure fit thrown off by a hand doesn't shift every pixel; a shaded empty square at the board's edge reads as empty |
 | `tests/test_matcher.py` | A 26-ply opening with captures and kingside castling, queenside castling, en passant, promotion, still frames giving no move, a missed move leaving unexplained change, a faint black-on-dark e7-e5 still scoring once the board's contrast is known |
-| `tests/test_replay.py` | Whole games recorded as sessions and replayed end to end: a 16-move game (a "hand" between moves, ~1 fps, exposure drift), impatient players, the camera bumped three times mid-game, moves taken back by hand, a dark board where the start calibration must be chosen, a hand resting beside a corner, a sleeve beside rank 8, a sleeve lying over h1, and the Board window's dots refreshing every move |
+| `tests/test_replay.py` | Whole games recorded as sessions and replayed end to end: a 16-move game (a "hand" between moves, ~1 fps, exposure drift), impatient players, the camera bumped three times mid-game, moves taken back by hand, a dark board where the start calibration must be chosen, a hand resting beside a corner, a sleeve beside rank 8, a sleeve lying over h1, the Board window's dots refreshing every move, and a knocked-over pawn stood back up (no question, the next move still read) |
 | `tests/test_engine.py` | Stockfish found from `engine.path`, else from `PATH` when the configured path is from another computer |
 
 The camera scenes come from `tests/scene.py`: it draws a board and pieces through the same camera
@@ -90,6 +90,7 @@ All on the real board and camera unless marked synthetic.
 | 2026-10-17 | Real game, 10 plies (e4 e5 Bc4 Nf6 Nf3 d6 Nc3 Be7 O-O c5) | Before: c5 and e5 asked; a hand by the h1 corner read as Kh1 at tier 1. After: **0 of 527** still frames wrong, c5 tier 1, no Kh1 |
 | 2026-10-17 | Real game, 20 plies (e4 e5 Nf3 Qf6 Bd3 d6 O-O Bg4 Nc3 d5 Nxd5 Nd7 b3 O-O-O Bb2 Ba3 Bxa3 Ne7 h3 Rhf8, with one takeback) | Before: a sleeve over the h1 corner read as Rg1 and three times as Kh1. After: **0 of 874** still frames wrong; the only questions came with a hand at the board |
 | 2026-10-17 | A session with a cable dangling over the board, nothing moved | Before: "h3" read. After: nothing read |
+| 2026-10-17 | Start with the b2 pawn knocked over, stood back up, then a sleeve at the board's edge; nothing moved | Before: asked "1) b4 2) b3 3) h3", and dots on empty a5/a6. After: no question, **0 of 83** still frames wrong, no stray dots |
 | — | **The 16-move test game, recorded and replayed against `test_game.pgn`** | **Pending** |
 
 Bugs found by QA and fixed: the frame reader thread crashed when two frames arrived within the
@@ -100,5 +101,6 @@ after the camera moved; the exposure fit kept a wrong offset after clipping its 
 the reference frame made the whole board look changed; the frame from question time (a hand still
 on the board) became the reference after an answer; a faint but clear move was dropped as
 lighting; a hand or sleeve at the board's edge blocked real moves or passed as one; the Board
-window's dots only updated every 10 plies; Stockfish wasn't found when `config.yaml` held a path
-from another computer.
+window's dots only updated every 10 plies and put pieces on shaded empty squares; straightening a
+knocked-over piece asked for a move; Stockfish wasn't found when `config.yaml` held a path from
+another computer.

@@ -65,7 +65,7 @@ Click one of the windows first so it receives the key presses.
 |---|---|
 | It recorded the wrong move | **Z**, then pick or type (**T**) the right one |
 | You took a move back on the board | Nothing: it's undone automatically once the board is still. **Z** also works |
-| You straightened a piece and it asks about a move | **X** |
+| You straightened a piece | Usually nothing: it's recognised as an adjustment. If it asks anyway, **X** |
 | You knocked pieces over and put them back | **X** once the board is right |
 | "The board or camera moved" | Small shifts are followed on their own; this means it couldn't. **C** to recalibrate. Pieces can stay |
 | "Camera disagrees on e4, ..." | Check those squares. **Z**/**T** if the game is wrong, **X** if the board was only touched |

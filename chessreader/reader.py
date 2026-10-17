@@ -124,15 +124,33 @@ class OccupancyReader:
 
     Learns what an empty light square, an empty dark square, a white piece and a black
     piece look like from the starting position, then classifies each square's center
-    patch. Squares whose center is hidden behind another piece (low camera angles) are
-    reported as unknown (all-NaN). Used for health checks and the debug view; the move
-    matcher works from frame differences instead.
+    patch. Two cues: colour (the centre's mean Lab) and texture (the brightness spread over
+    most of the square). Texture is what tells empty from occupied: an empty square is flat
+    (std about 1-3) and any piece isn't (5 and up, black on dark too), while by colour alone a
+    light square at the board's shaded edge can pass for a white piece. Squares whose center
+    is hidden behind another piece (low camera angles) are reported as unknown (all-NaN).
+    Used for health checks and the Board window's dots; the move matcher works from frame
+    differences instead.
     """
 
-    def __init__(self, patch_frac: float = 0.3, std_floor: float = 6.0) -> None:
+    def __init__(self, patch_frac: float = 0.3, std_floor: float = 6.0, texture_frac: float = 0.6) -> None:
         self.patch_frac = patch_frac
         self.std_floor = std_floor
+        self.texture_frac = texture_frac
         self.templates: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+        self.texture: dict[str, tuple[float, float]] = {}  # "empty" / "piece": mean, std of log(std)
+
+    def _textures(self, warped: np.ndarray) -> np.ndarray:
+        """log of the brightness std over most of each square, shape (8, 8), row 0 = rank 8."""
+        gray = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY).astype(np.float32)
+        sq = warped.shape[0] / 8
+        half = sq * self.texture_frac / 2
+        out = np.zeros((8, 8), np.float32)
+        for r in range(8):
+            for c in range(8):
+                cy, cx = (r + 0.5) * sq, (c + 0.5) * sq
+                out[r, c] = np.log(gray[int(cy - half):int(cy + half), int(cx - half):int(cx + half)].std() + 0.5)
+        return out
 
     def _patches(self, warped: np.ndarray) -> np.ndarray:
         """Mean Lab color of each square's center patch, shape (8, 8, 3), row 0 = rank 8."""
@@ -168,8 +186,10 @@ class OccupancyReader:
         import chess
 
         patches = self._patches(warped)
+        textures = self._textures(warped)
         visible = self._visible(cam, board, cam.render_labels(board))
         groups: dict[str, list[np.ndarray]] = {"light": [], "dark": [], "white": [], "black": []}
+        tex: dict[str, list[float]] = {"empty": [], "piece": []}
         for sq in chess.SQUARES:
             row, col = 7 - chess.square_rank(sq), chess.square_file(sq)
             if not visible[row, col]:
@@ -179,10 +199,14 @@ class OccupancyReader:
                 groups["light" if (row + col) % 2 == 0 else "dark"].append(patches[row, col])
             else:
                 groups["white" if piece.color else "black"].append(patches[row, col])
+            tex["empty" if piece is None else "piece"].append(float(textures[row, col]))
         for name, values in groups.items():
             if len(values) >= 2:
                 arr = np.array(values)
                 self.templates[name] = (arr.mean(0), np.maximum(arr.std(0), self.std_floor))
+        for name, values in tex.items():
+            if len(values) >= 2:
+                self.texture[name] = (float(np.mean(values)), max(float(np.std(values)), 0.3))
         logger.info("Occupancy templates learned: %s", {k: len(v) for k, v in groups.items()})
 
     def contrast(self, piece: str, square: str, chroma_weight: float = 1.5) -> float | None:
@@ -198,19 +222,27 @@ class OccupancyReader:
         if not {"light", "dark", "white", "black"} <= self.templates.keys():
             return probs
         patches = self._patches(warped)
+        textures = self._textures(warped)
         visible = self._visible(cam, board, cam.render_labels(board))
 
         def nll(x: np.ndarray, name: str) -> float:
             mean, std = self.templates[name]
             return float((((x - mean) / std) ** 2).sum() / 2)
 
+        def tex_nll(t: float, name: str) -> float:
+            if name not in self.texture:
+                return 0.0
+            mean, std = self.texture[name]
+            return ((t - mean) / std) ** 2 / 2
+
         for r in range(8):
             for c in range(8):
                 if not visible[r, c]:
                     continue
-                x = patches[r, c]
-                e = nll(x, "light" if (r + c) % 2 == 0 else "dark")
-                scores = -np.array([e, nll(x, "white"), nll(x, "black")])
+                x, t = patches[r, c], float(textures[r, c])
+                e = nll(x, "light" if (r + c) % 2 == 0 else "dark") + tex_nll(t, "empty")
+                piece = tex_nll(t, "piece")
+                scores = -np.array([e, nll(x, "white") + piece, nll(x, "black") + piece])
                 scores -= scores.max()
                 p = np.exp(scores)
                 probs[r, c] = p / p.sum()

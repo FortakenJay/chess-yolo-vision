@@ -106,6 +106,7 @@ class ConfirmTiers(BaseModel):
     t2_margin: float = 800.0
     max_unexplained: float = 0.35
     max_off_board: float = 3000.0
+    wait_off_board: float = 1000.0
     min_end_ratio: float = 0.75
     clear_end_q: float = 0.45
     vote_frames: int = 3

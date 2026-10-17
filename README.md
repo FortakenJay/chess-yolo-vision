@@ -118,6 +118,7 @@ Arduino IDE settings, flashing, camera orientation and the camera speed problem 
    played (or **T** to type it). If you just move your hand away instead, a clear re-read is
    accepted without an answer.
 5. Changed your mind? Put the piece back where it was: the move is taken back automatically.
+   Straightening a piece (or standing a fallen one back up) isn't a move and isn't asked about.
 6. End with **E** (you'll be asked the result in the terminal), or **R** if someone resigned.
 
 ### Keys (click a window first)
@@ -127,7 +128,7 @@ Arduino IDE settings, flashing, camera orientation and the camera speed problem 
 | S | Start the game (when not using `--start`) |
 | 1 / 2 / 3 | Pick the move when asked |
 | T | Type a move in the terminal (`Nf3` or `g1f3`) |
-| X | "No move happened": accept the board as it looks now (e.g. you only straightened a piece) |
+| X | "No move happened": accept the board as it looks now (straightening a piece is usually recognised on its own) |
 | Z | Undo the last move (if the board still shows it, you'll be asked for the right one). Not needed when you put a move back by hand |
 | C | Recalibrate, if the board or camera moved more than it can follow. Pieces can stay where they are |
 | E | End the game and enter the result |
@@ -144,7 +145,7 @@ More detail: [docs/usage.md](docs/usage.md).
 
 | Output | Where | Notes |
 |---|---|---|
-| **Board** window | screen | Top-down board, last move arrow, dots for what the camera sees per square (refreshed after every move; black pieces on dark squares often get none), large eval + best move + win/draw/loss %, move list, Stockfish's top 2 lines, eval bar |
+| **Board** window | screen | Top-down board, last move arrow, dots for what the camera sees per square (refreshed after every move, shown only when sure), large eval + best move + win/draw/loss %, move list, Stockfish's top 2 lines, eval bar |
 | **Camera** window | screen | Live camera, board outline, changed pixels in red, the outline of the move being considered, status line |
 | PGN | `exports/game_<date>_<time>.pgn` | Standard PGN, rewritten after every move; each move has a comment with its time and how it was confirmed |
 | Session recording | `sessions/<date>_<time>/` | Every frame (`frames/`), `frames.csv`, `moves.csv`, `calibration.json`. Used by `replay` |
@@ -259,11 +260,12 @@ Every setting is explained in [docs/configuration.md](docs/configuration.md).
 .\.venv\Scripts\python -m pytest tests -q
 ```
 
-33 tests: calibration (corner extrapolation, never mirroring, save/load), the frame reader, the
+35 tests: calibration (corner extrapolation, never mirroring, save/load), the frame reader, the
 change map (black on dark, nudged edges, exposure), move matching on synthetic camera scenes
 (captures, both castles, en passant, promotion, missed moves, faint black-on-dark moves), finding
 Stockfish, and whole recorded games replayed end to end, including a bumped camera, moves taken
-back by hand, and a hand or sleeve resting beside or on the board's edge.
+back by hand, a hand or sleeve resting beside or on the board's edge, and a knocked-over pawn
+stood back up.
 
 **Replay a real game** to measure accuracy after changing anything:
 
@@ -282,15 +284,15 @@ rate and the number of **wrong accepts** (target: 0). Details and current result
 - Working: camera control, automatic calibration with pieces on the board, orientation, camera
   tracking, motion gating, move matching (including black on dark squares), takebacks by hand,
   tiers, PGN, Stockfish display, replay harness.
-- **Real games:** four recorded games (up to 20 plies, two with takebacks by hand) replay with the
-  board state right on every still frame and no wrong accepts. Questions remain only while a hand
+- **Real games:** five recorded sessions (up to 20 plies, two with takebacks by hand, one where
+  only a fallen pawn was stood up) replay with the board state right on every still frame and no
+  wrong accepts. Questions remain only while a hand
   or sleeve rests on or right beside the board. See [docs/testing.md](docs/testing.md).
 - **Camera speed:** about 0.4–5 frames per second with occasional stalls. The ESP32 itself is the
   bottleneck ([docs/hardware.md](docs/hardware.md#camera-speed)). It slows down move reading, it
   doesn't cause wrong moves.
 - **Camera mount:** small sways are followed, but a big jump (or the board covered while it moves)
   still needs **C**.
-- Black pieces on dark squares are hard for the per-square health check (not for move reading).
 - Under-promotion relies on the YOLO model, which recognises this set poorly; default is a queen,
   and you can correct it with Z and T.
 

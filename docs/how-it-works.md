@@ -182,10 +182,18 @@ When the board becomes still (after following any camera shift):
    `t2_margin` (and explains the change, both ends included), the move is undone; no key needed.
    This is checked even
    when a next move looks confident: putting h5 back to h7 once looked like Qxh5.
+   **Adjusted piece**: the change is also scored as "only the piece on one square changed, in
+   place" (its outline, slightly widened). If that beats every legal move by half `t2_margin`, and
+   that piece's likeliest move would have shown up clearly at its destination but didn't, a piece
+   was straightened or nudged (a pawn knocked over at the start was stood back up): the board is
+   taken as it is now, no question. A faint destination (black piece arriving on a dark square)
+   never counts as "didn't show up", so a faint move can't be mistaken for an adjustment.
 4. No move scores at least `min_score` (500) → if one move still clearly stands out (positive
-   score, margin ≥ `t2_margin`) it's re-read as in tier 2, never dropped. Otherwise, if the change
-   is small (under 6,000 px) it's lighting drift and is ignored; above that you're asked, with
-   **X** available.
+   score, margin ≥ `t2_margin`) it's re-read as in tier 2, never dropped. Otherwise, if at least
+   `wait_off_board` (1,000 px) of the change lies beyond the board edge, a sleeve or hand is
+   resting there: it waits ("Something is resting at the board's edge") instead of asking. If the
+   change is small (under 6,000 px) it's lighting drift and is ignored; above that you're asked,
+   with **X** available.
 5. **Tier 1**: score ≥ 500, margin ≥ 1,500, unexplained ≤ 35%, off-board change ≤ 3,000 px, and
    every high-contrast end (expected rate ≥ `clear_end_q`, 0.45) changed at least `min_end_ratio`
    (0.75) of what was expected → accepted.
@@ -205,13 +213,15 @@ Stockfish is never consulted here, so a blunder is recorded as played.
 
 ## 8. Health checks — `health.py`
 
-- **Board window dots** (after every move, and at game start): the top-down view's square centres
-  are classified as empty / white / black, using colour templates learned from the starting
-  position (empty light, empty dark, white piece, black piece), and drawn as dots. Squares whose
-  centre is hidden by another piece are skipped.
+- **Board window dots** (after every move, and at game start): each square is classified as
+  empty / white / black from two cues learned on the starting position. **Texture** (brightness
+  spread over 60% of the square) tells empty from occupied: on the real board empty squares
+  measure 0.2–2.8 and every piece 5.6 or more, black on dark included. **Colour** (the centre's
+  mean Lab against empty light, empty dark, white piece and black piece) tells white from black.
+  Colour alone misread shaded empty squares at the board's edge as pieces. Squares whose centre is
+  hidden by another piece are skipped; a dot is drawn only when the reading is at least 60% sure.
 - **Sync** (every 10 moves): those readings are compared with the game. A square that confidently
   disagrees on two checks in a row is flagged in red, with Z/T/X offered.
-  Black pieces on dark squares are often too close to call; those are skipped rather than flagged.
 - **Drift** (every 10 s while still, only if camera tracking couldn't follow the shift): edges of
   the top-down view are compared with the edge map from game start. If under 45% of the reference edges are still within 4 px on 3 checks in a row, the game
   pauses and asks you to recalibrate (**C**).
