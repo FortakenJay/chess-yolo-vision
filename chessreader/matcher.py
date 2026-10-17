@@ -93,6 +93,16 @@ class MoveMatcher:
         after.push(move)
         return self.render(after) != before_labels
 
+    def score_move(self, board: chess.Board, move: chess.Move, change: np.ndarray) -> tuple[Candidate, float]:
+        """One move's score against a change map, and the unexplained share outside its mask."""
+        change = np.where(self.region, change, 0.0).astype(np.float32)
+        llr = change * self.reward + (1.0 - change) * self.penalty
+        mask = self.predicted_mask(self.render(board), board, move)
+        cand = Candidate(move, float(llr[mask].sum()) * self.px, float(mask.sum()) * self.px,
+                         float(change[mask].sum()) * self.px)
+        total = float(change.sum()) * self.px
+        return cand, (self.unexplained_blobs(change, mask) / total if total > 0 else 0.0)
+
     def match(self, board: chess.Board, change: np.ndarray) -> MatchResult:
         """change: change probability map over the ROI at the work scale."""
         if change.shape != self.region.shape:

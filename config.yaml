@@ -46,6 +46,7 @@ reader:                      # change map + move matching
   scale: 0.5                 # work resolution
   t_low: 10.0                # color distance below which a pixel is unchanged
   t_high: 28.0               # color distance above which a pixel surely changed
+  texture_weight: 5.0        # local-contrast change; lets black pieces on dark squares count
   q_in: 0.55                 # chance a pixel inside a moved piece's outline visibly changes
   q_out: 0.03                # noise rate elsewhere
   height_scale: 1.0          # scales the assumed piece heights

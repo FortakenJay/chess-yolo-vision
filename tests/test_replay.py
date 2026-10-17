@@ -40,7 +40,7 @@ def write_session(tmp_path, moves, seed=0, hand_frames=2, still_frames=3, bumps=
     for _ in range(2):
         emit(render(cam, cal, board, rng, table=table), "WAIT_START")
     for i, san in enumerate(moves):
-        move = board.parse_san(san)
+        move = board.peek() if san == "takeback" else board.parse_san(san)
         if bumps and i in bumps:
             dx, dy, degrees = bumps[i]
             turn = np.vstack([cv2.getRotationMatrix2D((FRAME[0] / 2, FRAME[1] / 2), degrees, 1.0), [0, 0, 1]])
@@ -52,7 +52,10 @@ def write_session(tmp_path, moves, seed=0, hand_frames=2, still_frames=3, bumps=
             img = render(cam, cal, board, rng, table=table)
             cv2.ellipse(img, (int(x) + 30 * k, int(y)), (70, 45), 20, 0, 360, (120, 150, 200), -1)
             emit(img, "PLAYING")
-        board.push(move)
+        if san == "takeback":  # the player puts the last move back by hand
+            board.pop()
+        else:
+            board.push(move)
         for _ in range(still_frames):
             emit(render(cam, cal, board, rng, exposure=rng.uniform(-4, 4), table=table), "PLAYING")
     with open(folder / "frames.csv", "w", newline="", encoding="utf-8") as f:
@@ -96,3 +99,24 @@ def test_camera_bumped_mid_game_is_followed(tmp_path):
     assert summary["wrong_accepts"] == 0
     assert summary["moves_read"] == len(GAME)
     assert summary["auto_accept_rate"] >= 0.9
+
+
+def test_moves_put_back_by_hand_are_taken_back(tmp_path):
+    """The live game that kept a move the player had put back: the board state must follow the hands."""
+    from chessreader.calibration import Calibration
+    from chessreader.session import GameSession, Phase
+    from chessreader.replay import frames_from
+
+    moves = ["e4", "d5", "takeback", "Nc6", "takeback", "h5", "takeback", "c5", "Nf3"]
+    folder, _ = write_session(tmp_path, moves, seed=7, still_frames=5)
+    settings = Settings()
+    settings.storage.exports_dir = str(tmp_path / "exports")
+    settings.engine.enabled = False
+    frames = list(frames_from(folder))
+    cal = Calibration.from_json(json.loads((folder / "calibration.json").read_text()))
+    session = GameSession(settings, cal)
+    assert session.start_game(frames[0][0]) is None
+    for image, ts, _ in frames[1:]:
+        session.process(image, ts)
+        assert session.phase != Phase.ASK_USER, f"asked about {session.choices}"
+    assert [m.uci() for m in session.board.move_stack] == ["e2e4", "c7c5", "g1f3"]

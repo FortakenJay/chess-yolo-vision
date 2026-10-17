@@ -89,6 +89,7 @@ class ReaderSettings(BaseModel):
     scale: float = Field(0.5, gt=0.1, le=1.0)   # work resolution for change maps
     t_low: float = 10.0                # color distance below which a pixel is unchanged
     t_high: float = 28.0               # color distance above which a pixel surely changed
+    texture_weight: float = 5.0        # weight of local-contrast change (black pieces on dark squares)
     q_in: float = 0.55                 # chance a pixel inside a moved piece's outline visibly changes
     q_out: float = 0.03                # noise rate elsewhere
     height_scale: float = 1.0          # scales the assumed piece heights

@@ -24,26 +24,46 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Prepared:
-    lab: np.ndarray  # float32 Lab of the region of interest, downscaled and blurred
+    lab: np.ndarray      # float32 Lab of the region of interest, downscaled and blurred
+    texture: np.ndarray  # float32 local contrast (std of brightness) at the same scale
+
+
+def local_contrast(gray: np.ndarray, window: int) -> np.ndarray:
+    """Standard deviation of brightness in a window around each pixel.
+
+    A black piece on a dark square has nearly the square's average brightness, but its rim,
+    highlights and the shadow line around its base make the patch textured where the empty
+    square is flat. That is the cue a person uses to see black on black.
+    """
+    g = gray.astype(np.float32)
+    mean = cv2.blur(g, (window, window))
+    sq = cv2.blur(g * g, (window, window))
+    return np.sqrt(np.maximum(sq - mean * mean, 0.0))
 
 
 class ChangeReader:
     def __init__(self, roi: tuple[int, int, int, int], scale: float = 0.5, blur: int = 5,
-                 t_low: float = 10.0, t_high: float = 28.0, chroma_weight: float = 1.5) -> None:
+                 t_low: float = 10.0, t_high: float = 28.0, chroma_weight: float = 1.5,
+                 texture_weight: float = 5.0, texture_window: int = 7, texture_tolerance: int = 5) -> None:
         self.roi = roi
         self.scale = scale
         self.blur = blur | 1
         self.t_low = t_low
         self.t_high = t_high
         self.chroma_weight = chroma_weight
+        self.texture_weight = texture_weight
+        self.texture_window = texture_window | 1
+        self.texture_tolerance = texture_tolerance | 1
 
     def prepare(self, image: np.ndarray) -> Prepared:
         x0, y0, x1, y1 = self.roi
         crop = image[y0:y1, x0:x1]
         size = (int(round((x1 - x0) * self.scale)), int(round((y1 - y0) * self.scale)))
         small = cv2.resize(crop, size, interpolation=cv2.INTER_AREA)
+        # texture from the unblurred image: blurring first would erase the cue we're after
+        texture = local_contrast(cv2.cvtColor(small, cv2.COLOR_BGR2GRAY), self.texture_window)
         small = cv2.GaussianBlur(small, (self.blur, self.blur), 0)
-        return Prepared(cv2.cvtColor(small, cv2.COLOR_BGR2LAB).astype(np.float32))
+        return Prepared(cv2.cvtColor(small, cv2.COLOR_BGR2LAB).astype(np.float32), texture)
 
     @staticmethod
     def _match_exposure(ref: np.ndarray, cur: np.ndarray, sel: np.ndarray) -> np.ndarray:
@@ -63,7 +83,10 @@ class ChangeReader:
                     break
                 gain, offset = np.polyfit(x[keep], y[keep], 1)
                 keep = np.abs(y - (gain * x + offset)) < 8.0
-            gain = float(np.clip(gain, 0.7, 1.4))
+            clipped = float(np.clip(gain, 0.7, 1.4))
+            if clipped != gain:  # a fit thrown off by a hand or a moved piece: keep its offset and every pixel shifts
+                gain = clipped
+                offset = float(np.median(y[keep] - gain * x[keep])) if keep.sum() >= 50 else float(np.median(y - gain * x))
             out[..., c] = gain * ref[..., c] + offset
         return out
 
@@ -73,7 +96,20 @@ class ChangeReader:
         delta = cur.lab - self._match_exposure(ref.lab, cur.lab, sel)
         light = np.abs(delta[..., 0])
         chroma = np.hypot(delta[..., 1], delta[..., 2]) * self.chroma_weight
-        return np.maximum(light, chroma)
+        texture = self._texture_change(ref.texture, cur.texture) * self.texture_weight
+        return np.maximum(np.maximum(light, chroma), texture)
+
+    def _texture_change(self, ref: np.ndarray, cur: np.ndarray) -> np.ndarray:
+        """How far the current local contrast falls outside the reference's range nearby.
+
+        Square edges are all contrast, so a camera nudge of a pixel would light up every edge if
+        pixels were compared one to one. Comparing against the min..max of a small neighbourhood
+        ignores shifted edges but still sees a textured piece appear on (or leave) a flat square.
+        """
+        k = np.ones((self.texture_tolerance, self.texture_tolerance), np.uint8)
+        above = cur - cv2.dilate(ref, k)
+        below = cv2.erode(ref, k) - cur
+        return np.maximum(np.maximum(above, below), 0.0)
 
     def change_probability(self, ref: Prepared, cur: Prepared, mask: np.ndarray | None = None) -> np.ndarray:
         d = self.difference(ref, cur, mask)

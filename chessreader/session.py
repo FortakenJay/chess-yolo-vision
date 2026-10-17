@@ -107,6 +107,7 @@ class GameSession:
         self._llm_answer: list = []
         self._ask_frame: np.ndarray | None = None
         self._vote_frame: np.ndarray | None = None
+        self._ref_provisional = False  # reference taken when a question was asked; a hand may be in it
 
         self.session_dir = session_dir
         self._frames_csv = None
@@ -136,7 +137,7 @@ class GameSession:
         self.cam = BoardCamera.from_calibration(cal, r.height_scale)
         roi = self.cam.roi()
         self.matcher = MoveMatcher(self.cam, roi, r.scale, r.q_in, r.q_out)
-        self.reader = ChangeReader(roi, r.scale, t_low=r.t_low, t_high=r.t_high)
+        self.reader = ChangeReader(roi, r.scale, t_low=r.t_low, t_high=r.t_high, texture_weight=r.texture_weight)
         x0, y0, x1, y1 = roi
         region_full = cv2.resize(self.matcher.region.astype(np.uint8), (x1 - x0, y1 - y0),
                                  interpolation=cv2.INTER_NEAREST)
@@ -212,6 +213,33 @@ class GameSession:
         logger.info("Camera moved %.1f px; followed it (%d feature matches)", shift.moved_px, shift.inliers)
         return True
 
+    def _took_back(self, result: MatchResult, frame: np.ndarray) -> bool:
+        """The player put the last move back by hand.
+
+        Taking a move back changes exactly the pixels the move itself changed, so the change since
+        the last accepted position is scored against the last move's own mask. It has to explain
+        the change clearly better than any legal next move.
+        """
+        if not self.moves or self.last_change is None:
+            return False
+        before = self.board.copy()
+        last = before.pop()
+        cand, unexplained = self.matcher.score_move(before, last, self.last_change)
+        best = result.best.score if result.best else 0.0
+        logger.debug("takeback check: undoing %s scores %.0f (unexplained %.2f), best next move %.0f",
+                     last.uci(), cand.score, unexplained, best)
+        if (cand.score < self.confirm.min_score or cand.score - best < self.confirm.t2_margin
+                or unexplained > self.confirm.max_unexplained):
+            return False
+        undone = self.moves[-1].san
+        self.undo(reread=False)
+        self._set_reference(frame)
+        self.choices = []
+        self.phase = Phase.PLAYING
+        self.message = f"{undone} was taken back."
+        logger.info("Move %d (%s) was taken back on the board", len(self.moves) + 1, undone)
+        return True
+
     def _white_side(self) -> str:
         """Where white sits in the camera image, in words (for the LLM and the HUD)."""
         x, y = self.cam.project(np.array([[4.0, 8.0, 0.0]]))[0]   # middle of white's back edge
@@ -282,6 +310,11 @@ class GameSession:
                     self.choices = []
                     self.phase = Phase.PLAYING
                     self.message = "Board matches the last position again."
+                elif tier1_ok(result, self.confirm):  # e.g. the hand that caused the question is gone now
+                    self._ask_frame = None
+                    self._accept(result.best.move, Tier.AUTO, result, frame)
+                elif self._took_back(result, frame):
+                    self.choices = []
             return
         if self.phase == Phase.VOTING:
             if update.state == GateState.MOVING:
@@ -312,10 +345,21 @@ class GameSession:
 
     def _decide(self, result: MatchResult, frame: np.ndarray) -> None:
         r = self.s.reader
+        if self._ref_provisional:
+            # first still board after an answer: a clean next move counts; anything else means the
+            # frame from question time was unusable (a hand on the board), so take the board as it is now
+            self._ref_provisional = False
+            if result.total_change >= r.min_change_px and not tier1_ok(result, self.confirm):
+                logger.debug("reference from question time doesn't fit (%.0fpx); using the board as it is now",
+                             result.total_change)
+                self._set_reference(frame)
+                return
         if result.total_change < r.min_change_px:
             return  # same position as before
         if result.total_change > r.occlusion_fraction * self._region_px:
             self.message = "Something is covering the board."
+            return
+        if self._took_back(result, frame):
             return
         if result.best is None or result.best.score < self.confirm.min_score:
             if result.total_change < r.unexplained_alarm_px:
@@ -401,6 +445,7 @@ class GameSession:
 
     def _accept(self, move: chess.Move, tier: Tier, result: MatchResult | None, frame: np.ndarray) -> None:
         move = self._promotion_piece(move, frame)
+        self._ref_provisional = False
         self._ref_stack.append((self._ref, self._ref_image))
         san = self.record.add_move(move, int(tier), result.margin if result else 0.0)
         best = result.best if result and result.candidates else None
@@ -452,7 +497,11 @@ class GameSession:
     def _catch_up(self) -> None:
         """After the player answered, read any move made in the meantime."""
         frame = self._last_frame
-        if frame is not None and self.gate is not None and self.gate.state == GateState.STABLE                 and frame is not self._ask_frame and self.phase == Phase.PLAYING:
+        if frame is None or self.phase != Phase.PLAYING or frame is self._ask_frame:
+            return
+        self._ref_provisional = True
+        self._follow_camera(frame)  # the camera may have moved since the question was asked
+        if self.gate is not None and self.gate.state == GateState.STABLE:
             self._decide(self._read(frame), frame)
 
     def choose(self, index: int) -> None:
@@ -487,7 +536,7 @@ class GameSession:
             self.phase = Phase.PLAYING
         self.message = "OK, using the board as it is now."
 
-    def undo(self) -> None:
+    def undo(self, reread: bool = True) -> None:
         """Take back the last move. If the board still shows it, offer the alternatives."""
         if not self.record or not self.moves:
             return
@@ -501,7 +550,7 @@ class GameSession:
         logger.info("Undid %s", undone.uci() if undone else None)
         self.phase = Phase.PLAYING
         self.message = f"Undid {undone.uci()}."
-        if self._last_frame is not None:
+        if reread and self._last_frame is not None:
             result = self._read(self._last_frame)
             if result.total_change >= self.s.reader.min_change_px and result.candidates:
                 self._ask_user([c.move for c in result.top(3)], self._last_frame)

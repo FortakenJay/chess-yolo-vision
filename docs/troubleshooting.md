@@ -38,6 +38,8 @@ and unexplained share.
 | `Camera disagrees on ...` | Look at the red squares. **Z**/**T** if the game is wrong, **X** if the board is right |
 | `Something is covering the board` | A hand or arm was still over the board when it went still. Move it away |
 | A move was recorded wrongly | **Z**, then the right number or **T** |
+| You took a move back by hand | It's undone automatically (`was taken back` in the log). Put the piece back on its square and keep hands off until the board is still |
+| Black moves on dark squares need confirming | Raise `reader.texture_weight` a little (default 5); check with `replay` that no extra questions appear |
 | Promotion recorded as a queen but it was a knight | **Z**, then **T** `e8=N` (for example) |
 | Keys do nothing | Click one of the program's windows first |
 

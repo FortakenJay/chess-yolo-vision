@@ -90,8 +90,13 @@ The new still frame is compared with the frame saved when the last move was acce
 2. **Exposure correction**: the camera's automatic exposure and white balance make bright pixels
    change more than dark ones. Per channel, `current ≈ gain · reference + offset` is fitted to the
    pixels that look unchanged (two passes, dropping outliers), and the reference is mapped onto the
-   current exposure.
-3. Per pixel, `D = max(|ΔL|, 1.5 · |Δ(a,b)|)`.
+   current exposure. If the gain has to be clipped (a hand in one frame skews the fit), the offset
+   is refitted for the clipped gain.
+3. Per pixel, `D = max(|ΔL|, 1.5 · |Δ(a,b)|, 5 · Δtexture)`. **Texture** is the local contrast
+   (brightness std in a ~14 px window, taken before blurring). A black piece on a dark square has
+   almost the square's brightness, but its rim and highlights make the patch textured where the
+   empty square is flat. Δtexture is how far the current texture falls outside the reference's
+   min..max in a small neighbourhood, so a square edge nudged by a pixel doesn't count.
 4. `D` becomes a change probability `b`, ramping from 0 at `t_low` (10) to 1 at `t_high` (28).
 
 ## 6. Move matching — `matcher.py`
@@ -129,6 +134,9 @@ Typical numbers on the real board: a clear pawn move scores about 3,100–3,500 
 When the board becomes still:
 
 1. Total change under `min_change_px` (900) → nothing happened.
+   **Takeback**: taking a move back by hand changes exactly the pixels the move changed, so the
+   change is also scored against the last move's own mask. If that beats every legal next move by
+   `t2_margin` (and explains the change), the move is undone; no key needed.
 2. More than 35% of the board changed → something covers the board; wait.
 3. No move scores at least `min_score` (1,000) → if the change is small (under 6,000 px) it's
    lighting drift and is ignored; otherwise you're asked, with **X** available.
@@ -139,7 +147,9 @@ When the board becomes still:
    API, `claude-sonnet-5-5`), which must answer with one of the listed moves.
 7. **Tier 4**: the top 3 are drawn as numbered arrows; you press 1–3 or type it. The reference
    becomes the frame from when the question was asked, so a move made in the meantime isn't lost,
-   and it's read right after you answer.
+   and it's read right after you answer. That frame may still show a hand: if the next still board
+   isn't a clean move from it, the board as it is then becomes the reference. While a question is
+   open, a clean (tier 1) read of a later still board is accepted without an answer.
 
 Stockfish is never consulted here, so a blunder is recorded as played.
 
