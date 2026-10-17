@@ -1,19 +1,90 @@
-esp32_url: "http://127.0.0.1:8080/stream"
-piece_model_path: "models/pieces.pt"
-piece_conf: 0.15
-smoothing_frames: 5
-warp_size: 800
-min_board_area_px: 40000
-min_frame_width: 320
-min_frame_height: 240
-rotate_180: false
-exports_dir: "exports"
-failures_dir: "exports/failures"
-opening_book_path: null
-show_square_labels: true
-show_confidence_scores: true
-show_piece_count_hud: true
-highlight_last_move: true
-hud_font_scale: 0.6
-grid_opacity: 0.5
-highlight_opacity: 0.35
+# Chess reader settings. Relative paths resolve against this folder (the project root).
+
+camera:
+  host: 192.168.4.1          # ESP32 softAP address (ChessCam network)
+  http_port: 80              # /capture, /control, /status
+  stream_port: 81            # /stream
+  source: capture            # capture = poll /capture (works with a browser open); stream = MJPEG on :81
+  framesize: SVGA            # 800x600. esp32-camera names: VGA, SVGA, XGA, HD, SXGA, UXGA, ...
+  quality: 10                # JPEG quality 4-63, lower = better
+  vflip: true               # this camera delivers a vertically mirrored image
+  hmirror: false
+  extra_controls: {}         # other /control vars, e.g. {brightness: 1, awb: 1}
+  apply_controls: true       # push the settings above on startup
+  connect_timeout_s: 8.0
+  read_timeout_s: 12.0
+  reconnect_backoff_s: 1.0
+  reconnect_backoff_max_s: 10.0
+
+calibration:
+  dir: calib
+  warp_size: 800             # top-down view size, 100 px per square
+  detect_attempts: 5         # frames tried per auto-detect press
+  max_reprojection_px: 4.0   # allowed auto-detect fit error, in warped pixels
+  canny_low: 50
+  canny_high: 150
+
+view:
+  show_labels: true
+  captures_dir: captures
+
+record:
+  dir: recordings
+  fps: 10.0
+
+logging:
+  dir: logs
+  level: INFO
+
+gate:                        # when is the board "still"?
+  pixel_threshold: 18.0      # gray-level change that counts as motion
+  motion_fraction: 0.004     # share of board pixels that must change to count as motion
+  stable_time_s: 0.8         # board must be still this long ...
+  min_stable_frames: 2       # ... and for at least this many frames
+
+reader:                      # change map + move matching
+  scale: 0.5                 # work resolution
+  t_low: 10.0                # color distance below which a pixel is unchanged
+  t_high: 28.0               # color distance above which a pixel surely changed
+  q_in: 0.55                 # chance a pixel inside a moved piece's outline visibly changes
+  q_out: 0.03                # noise rate elsewhere
+  height_scale: 1.0          # scales the assumed piece heights
+  min_change_px: 900.0       # less change than this = nothing happened
+  occlusion_fraction: 0.35   # more of the board changed than this = a hand/arm is in view
+  unexplained_alarm_px: 6000.0  # change no legal move explains: ignored below this, asks you above
+
+confirm:                     # tiers (scores are in full-resolution pixels)
+  min_score: 1000.0
+  t1_margin: 1500.0          # auto-accept when best beats runner-up by this much
+  t2_margin: 800.0           # same, after averaging the re-reads
+  max_unexplained: 0.35      # share of the change left in piece-sized blobs the best move does not explain
+  vote_frames: 3             # extra still frames read in tier 2
+
+llm:                         # tier 3, off: needs ANTHROPIC_API_KEY in .env
+  enabled: false
+  model: claude-sonnet-5-5
+
+health:
+  sync_every_moves: 10       # compare camera occupancy with the game every N moves
+  sync_min_confidence: 0.9
+  drift_every_s: 10.0        # check whether the board/camera moved
+  drift_threshold: 0.45
+
+engine:
+  enabled: true
+  path: 'C:\Users\Jay\Downloads\stockfish-windows-x86-64-avx2\stockfish\stockfish-windows-x86-64-avx2.exe'
+  think_time_s: 0.5
+  multipv: 3
+  show_best_moves: true      # false = training/review mode (hide best moves while playing)
+
+storage:
+  exports_dir: exports
+  sessions_dir: sessions   # every frame of every game, for replay testing
+  record_frames: true
+  white: White
+  black: Black
+
+pieces:                      # YOLO, used only to tell what a pawn promoted to
+  weights: models/pieces.pt
+  conf: 0.15
+  use_for_promotion: true

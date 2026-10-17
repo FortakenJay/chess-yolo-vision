@@ -1,14 +1,16 @@
-.env
-__pycache__/
-.pytest_cache/
+# Python
 .venv/
+__pycache__/
 *.pyc
-exports/*.pgn
-exports/failures/*.json
-datasets/
-venv/
-runs/
-# Ultralytics auto-downloaded base weights (root level)
-yolo26*.pt
-yolo11*.pt
-yolov8*.pt
+.pytest_cache/
+
+# Created at runtime (per machine / per game)
+calib/
+captures/
+recordings/
+logs/
+sessions/
+exports/
+
+# Secrets
+.env

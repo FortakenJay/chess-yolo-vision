@@ -1,11 +1,10 @@
 numpy
 opencv-python
 pydantic
-pydantic-settings
 PyYAML
 python-chess
 python-dotenv
-pytest
-pytest-mock
-supabase
+requests
 ultralytics>=8.4.0
+anthropic
+pytest

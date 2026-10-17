@@ -1,42 +1,30 @@
+import cv2
 import numpy as np
 import pytest
 
-from src.errors import StreamConnectionError
-from src.stream import MJPEGStreamReader
+from chessreader.stream import FrameGrabber, framesize_code
 
 
-class _FakeCapture:
-    def __init__(self, ok=True, frame=None):
-        self._ok = ok
-        self._frame = frame if frame is not None else np.zeros((480, 640, 3), dtype=np.uint8)
-
-    def isOpened(self):
-        return True
-
-    def read(self):
-        return self._ok, self._frame
-
-    def release(self):
-        return None
+def test_framesize_lookup():
+    assert framesize_code("svga") == (11, (800, 600))
+    assert framesize_code("QVGA") == (6, (320, 240))
+    with pytest.raises(ValueError):
+        framesize_code("4K")
 
 
-def test_invalid_url_rejected():
-    with pytest.raises(StreamConnectionError):
-        MJPEGStreamReader("foo", 320, 240)
+def test_grabber_keeps_newest_frame(tmp_path):
+    path = tmp_path / "clip.avi"
+    writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"MJPG"), 30, (160, 120))
+    for i in range(30):
+        writer.write(np.full((120, 160, 3), i * 8, np.uint8))
+    writer.release()
 
-
-def test_read_valid_frame(monkeypatch):
-    monkeypatch.setattr("src.stream.socket.create_connection", lambda *args, **kwargs: _DummySocket())
-    monkeypatch.setattr("src.stream.cv2.VideoCapture", lambda *_: _FakeCapture(ok=True))
-    reader = MJPEGStreamReader("http://127.0.0.1:81/stream", 320, 240, retries=1)
-    frame = reader.read_frame()
-    assert frame.shape == (480, 640, 3)
-
-
-class _DummySocket:
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        return False
-
+    grabber = FrameGrabber(str(path), backoff_s=0.05).start()
+    try:
+        first = grabber.wait_for_frame(timeout=5)
+        assert first is not None and first.image.shape == (120, 160, 3)
+        later = grabber.wait_for_frame(first.index, timeout=5)
+        assert later is not None and later.index > first.index
+        assert grabber.latest().index >= later.index
+    finally:
+        grabber.stop()

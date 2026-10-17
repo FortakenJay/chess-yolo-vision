@@ -1,437 +1,265 @@
-# Chess Vision Recorder
+# Chess YOLO Vision
 
-Real-time chess game recorder using a phone camera stream (Expo + desktop bridge), Ultralytics YOLO26 detection (NMS-free end-to-end), perspective warping, move legality checks, PGN export, and optional Supabase persistence.
+Reads a game played on a **real chess board** through an **ESP32 camera**, tracks every move with
+python-chess, shows Stockfish's evaluation live on the computer screen, and saves the game as PGN.
 
-This repository is designed for:
-- **Live board capture** from iPhone/Android camera via Expo + bridge MJPEG stream
-- **Board understanding** (corner detection + piece detection)
-- **Game reconstruction** (FEN smoothing + legal move parsing with `python-chess`)
-- **Export + storage** (PGN files locally, optional Supabase insert)
+```
+ ESP32-WROVER CAM ──Wi-Fi "ChessCam"──▶ PC: chessreader ──▶ Board window (eval, best move, lines)
+ (hotspot 192.168.4.1)                     │                ──▶ exports/game_*.pgn
+                                           └─ Stockfish     ──▶ sessions/ (every frame, for replay QA)
+```
+
+- No printed markers, no special board: it finds a normal board on its own (empty or in the starting position).
+- It doesn't try to recognise every piece. It compares the board before and after each move and
+  picks the **legal move** that best explains what changed. That's robust to a dim, low-resolution
+  camera and to pieces hiding each other.
+- Unsure moves are re-checked, then shown to you as 1/2/3 choices. **Stockfish never decides which
+  move was played**, so blunders are recorded as played.
 
 ---
 
-## 1) Current Project Structure
+## Contents
 
-```text
-Chess-YOKOv8-vision/
-├── code/
-│   ├── esp32_cam_stream.ino      # ESP32-CAM firmware (MJPEG /stream)
-│   ├── train_models.py           # trains pieces + corners models
-│   └── view_esp32_stream.py      # quick stream viewer
-├── datasets/
-│   ├── Chess_Pieces.yolov8/
-│   └── Chessboard_detection-4Corners.yolov8/
-├── exports/                      # PGN output and failure archives
-├── models/                       # final model weights copied here
-├── src/
-│   ├── stream.py
-│   ├── corners.py
-│   ├── warp.py
-│   ├── pieces.py
-│   ├── fen.py
-│   ├── validator.py
-│   ├── smoother.py
-│   ├── move_recorder.py
-│   ├── pgn_exporter.py
-│   ├── supabase_client.py
-│   ├── display.py
-│   ├── pipeline.py
-│   ├── settings.py
-│   ├── errors.py
-│   └── types.py
-├── tests/
-├── config.yaml
-├── .env.example
+1. [Quick start](#quick-start)
+2. [Hardware](#hardware)
+3. [Playing a game](#playing-a-game)
+4. [What it outputs](#what-it-outputs)
+5. [How it works](#how-it-works)
+6. [Project layout](#project-layout)
+7. [Configuration](#configuration)
+8. [Testing and QA](#testing-and-qa)
+9. [Status and known limitations](#status-and-known-limitations)
+10. [Further documentation](#further-documentation)
+
+---
+
+## Quick start
+
+All commands are PowerShell, run from this folder (`chess-yolo-vision`).
+
+**1. Python environment** (Python 3.12; skip if `.venv` already exists)
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python -m pip install -r requirements.txt
+```
+
+**2. Stockfish.** Download Stockfish for Windows and put the path to the `.exe` in
+[config.yaml](config.yaml) under `engine.path`. (Leave it empty to play without analysis.)
+
+**3. Camera.** Flash the ESP32 once ([docs/hardware.md](docs/hardware.md)), power it, and connect this
+PC's Wi-Fi to the open network **`ChessCam`**. Check it:
+
+```powershell
+.\.venv\Scripts\python run.py check
+```
+
+You should see `Camera set to SVGA 800x600` and `Stream OK`.
+
+**4. Play.** Set up the starting position, then:
+
+```powershell
+.\.venv\Scripts\python run.py play --start
+```
+
+`--start` finds the board and starts the game automatically. Without it, press **S** once the
+pieces are set up.
+
+---
+
+## Hardware
+
+| Part | Notes |
+|---|---|
+| Freenove ESP32-WROVER CAM (OV2640, 4 MB PSRAM) | Firmware: [firmware/CameraWebServer](firmware/CameraWebServer) |
+| Any normal chess board and set | Light squares and dark squares must contrast; tested on a roll-up vinyl board |
+| Camera mount | Above the board, looking down. Near-overhead works best (tall pieces hide less) |
+| PC | Windows 11, Python 3.12. A GPU is not needed |
+
+The ESP32 makes its own Wi-Fi hotspot, `ChessCam`, and is always at `192.168.4.1`. Campus
+networks such as eduroam can't be used (they need a username login and block devices from
+talking to each other). While on `ChessCam` the PC has no internet over Wi-Fi; Ethernet still works.
+
+Arduino IDE settings, flashing, camera orientation and the camera speed problem are all in
+[docs/hardware.md](docs/hardware.md).
+
+---
+
+## Playing a game
+
+1. Put the pieces in the starting position.
+2. Run `.\.venv\Scripts\python run.py play --start`. Two windows open: **Camera** and **Board**.
+3. Play normally. After each move, take your hand off the board; the move is read once the board has
+   been still for about a second.
+4. If the **Board** window shows yellow arrows numbered 1–3, press the number of the move that was
+   played (or **T** to type it).
+5. End with **E** (you'll be asked the result in the terminal), or **R** if someone resigned.
+
+### Keys (click a window first)
+
+| Key | Action |
+|---|---|
+| S | Start the game (when not using `--start`) |
+| 1 / 2 / 3 | Pick the move when asked |
+| T | Type a move in the terminal (`Nf3` or `g1f3`) |
+| X | "No move happened": accept the board as it looks now (e.g. you only straightened a piece) |
+| Z | Undo the last move (if the board still shows it, you'll be asked for the right one) |
+| C | Recalibrate (board or camera moved). Pieces can stay where they are |
+| E | End the game and enter the result |
+| R | Resign (enter who resigned) |
+| A | Abort the game (PGN kept, game marked unfinished) |
+| N | New game after one has ended |
+| Q | Quit (an unfinished game is saved with result `*`) |
+
+More detail: [docs/usage.md](docs/usage.md).
+
+---
+
+## What it outputs
+
+| Output | Where | Notes |
+|---|---|---|
+| **Board** window | screen | Top-down board, last move arrow, dots for what the camera sees per square, large eval + best move + win/draw/loss %, move list, Stockfish's top 2 lines, eval bar |
+| **Camera** window | screen | Live camera, board outline, changed pixels in red, the outline of the move being considered, status line |
+| PGN | `exports/game_<date>_<time>.pgn` | Standard PGN, rewritten after every move; each move has a comment with its time and how it was confirmed |
+| Session recording | `sessions/<date>_<time>/` | Every frame (`frames/`), `frames.csv`, `moves.csv`, `calibration.json`. Used by `replay` |
+| Calibration | `calib/` | Board position in the camera image, reused until the board or camera moves |
+| Log | `logs/run_<date>_<time>.log` | Everything, including each move read with its score |
+
+Training/review mode: set `engine.show_best_moves: false` to hide the best move and engine lines
+during play (the eval still shows; everything is revealed when the game ends).
+
+---
+
+## How it works
+
+```
+frame ─▶ motion gate ─▶ change map (before vs after) ─▶ score every legal move ─▶ tiers ─▶ PGN + Stockfish
+             │                                                  ▲
+             └─ waits until the board is still      camera model: where each piece appears in the image
+```
+
+1. **Calibration.** OpenCV finds the board's grid (all 49 inner corners on an empty board, or the
+   empty middle four ranks of the starting position) and computes a homography to an 800×800
+   top-down view. The piece colours in the starting position tell which side white is on.
+2. **Camera model.** From that homography the program recovers the camera's position and focal
+   length, so it can predict the outline of a piece of any type standing on any square, including
+   which pieces hide which.
+3. **Motion gate.** Consecutive frames are compared; the board is "still" after ~0.8 s and 2 frames
+   without motion. A hand over the board is motion.
+4. **Change map.** The new still frame is compared with the frame from the last accepted move, after
+   correcting the camera's automatic brightness changes.
+5. **Move matching.** For every legal move, the pixels that move would change are predicted and
+   scored against the change map (a log-likelihood ratio). Castling, en passant and captures come
+   out naturally. The best move and its margin over the runner-up are kept.
+6. **Tiers.** 1: clear winner → accepted. 2: re-read a few more still frames and average.
+   3: (optional, off) ask a vision LLM. 4: ask you.
+7. **Health checks.** Every 10 moves the per-square colours are compared with the tracked game;
+   every 10 s the board edges are compared with calibration to catch a moved board or camera.
+8. **Promotion.** The piece type is the only thing read by the YOLO model (`models/pieces.pt`);
+   default is a queen.
+
+Full explanation with the maths: [docs/how-it-works.md](docs/how-it-works.md).
+
+---
+
+## Project layout
+
+```
+chess-yolo-vision/
+├── run.py                  entry point:  python run.py <command>
+├── config.yaml             all settings and thresholds
 ├── requirements.txt
-└── main.py
+├── chessreader/            the Python package
+│   ├── main.py             command line (play, replay, check, calibrate, view, record)
+│   ├── play.py             live game: windows, keys, Stockfish
+│   ├── session.py          one game: gating → matching → tiers → PGN (no UI; shared by play and replay)
+│   ├── stream.py           ESP32 camera: settings over /control, frame reader with reconnects
+│   ├── calibration.py      board detection, homography, manual corner clicking
+│   ├── geometry.py         camera model, piece outlines, orientation from piece colours
+│   ├── gating.py           motion gate
+│   ├── reader.py           change map, per-square occupancy, YOLO wrapper
+│   ├── matcher.py          legal-move scoring
+│   ├── confirm.py          tiers 1–4
+│   ├── health.py           sync and drift checks
+│   ├── engine.py           Stockfish in a background thread
+│   ├── storage.py          PGN writer
+│   ├── replay.py           replay a recorded session and score it against a PGN
+│   ├── display.py          drawing helpers
+│   └── settings.py         config loading
+├── tests/                  pytest suite (synthetic scenes) + tests/data/test_game.pgn
+├── firmware/CameraWebServer/   ESP32 sketch (Arduino)
+├── models/
+│   ├── pieces.pt           YOLO piece detector (13 classes), used for promotions only
+│   └── board_segmentation.pt   older board-finding model, kept but not used
+├── docs/                   detailed documentation
+└── calib/ exports/ sessions/ logs/ captures/   created at runtime (git-ignored)
 ```
 
 ---
 
-## 2) How It Works (High-Level)
+## Configuration
 
-Per frame:
-1. Read frame from MJPEG stream (phone bridge by default, ESP32 optional).
-2. Optionally rotate frame 180 in software (`config.yaml`).
-3. Detect board corners (YOLO26s corners model, filtered to the `corner` class).
-4. Warp to top-down board view.
-5. Detect pieces (YOLO26m pieces model) and map to board squares.
-6. Build FEN from mapped board.
-7. Validate position legality.
-8. Smooth FEN over a temporal window.
-9. If stable FEN changed, parse legal move and append to game.
-10. Render two OpenCV windows: raw feed + warped board view.
+Everything lives in [config.yaml](config.yaml), with a comment on each line. The ones you're most
+likely to touch:
 
-Game end:
-1. Export PGN to `exports/`.
-2. Attempt Supabase insert.
-3. If Supabase fails, save fallback payload in `exports/failures/`.
+| Setting | Default | What it does |
+|---|---|---|
+| `camera.source` | `capture` | `capture` polls snapshots (works even if a browser has the camera open); `stream` uses the MJPEG stream |
+| `camera.vflip` / `hmirror` | `true` / `false` | Image orientation; this camera needs `vflip` |
+| `engine.path` | your Stockfish | Empty disables analysis |
+| `engine.show_best_moves` | `true` | `false` = training mode |
+| `confirm.t1_margin` | `1500` | How clearly a move must win to be accepted without asking |
+| `storage.white` / `black` | `White` / `Black` | Player names in the PGN |
+| `llm.enabled` | `false` | Tier 3; needs `ANTHROPIC_API_KEY` in a `.env` file |
+
+Every setting is explained in [docs/configuration.md](docs/configuration.md).
 
 ---
 
-## 3) Requirements
-
-- Windows 10/11 (or Linux/macOS)
-- Python **3.12** recommended in this repo currently
-- NVIDIA GPU supported (tested with RTX 4070 Laptop GPU)
-- Phone with Expo Go (recommended camera source)
-- ESP32-CAM is optional legacy hardware source
-
-Python dependencies are in `requirements.txt`.
-
----
-
-## 4) Environment Setup
-
-From repository root (PowerShell):
+## Testing and QA
 
 ```powershell
-py -3.12 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install --index-url https://download.pytorch.org/whl/cu121 torch torchvision torchaudio
-python -m pip install -r requirements.txt
-copy .env.example .env
+.\.venv\Scripts\python -m pytest tests -q
 ```
 
-Edit `.env`:
+19 tests: calibration (corner extrapolation, never mirroring, save/load), the frame reader, move
+matching on synthetic camera scenes (captures, both castles, en passant, promotion, missed moves),
+and a full recorded game replayed end to end.
 
-```env
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_KEY=your_publishable_or_service_key
-```
-
-Verify CUDA:
+**Replay a real game** to measure accuracy after changing anything:
 
 ```powershell
-python -c "import torch; print(torch.__version__); print(torch.cuda.is_available()); print(torch.version.cuda); print(torch.cuda.get_device_name(0))"
+.\.venv\Scripts\python run.py replay sessions\<folder> --pgn tests\data\test_game.pgn
 ```
 
----
-
-## 5) Phone Camera Setup (Default: Native iPhone Streamer + Bridge)
-
-Use this by default (no ESP32 required).
-
-### Preferred (no install): Safari web streamer (Next.js)
-
-Use `web_streamer/` on iPhone Safari — live camera via browser, no AltStore or Expo:
-
-```powershell
-cd web_streamer
-npm install
-npm run dev
-```
-
-Open `http://<PC_LAN_IP>:3000` on iPhone. See `web_streamer/README.md`.
-
-### Native iPhone streamer (AltStore path)
-
-Use the native app in `ios_phone_streamer/` for true video-frame streaming:
-
-1. On a Mac, generate/open the iOS project:
-
-   ```bash
-   brew install xcodegen
-   cd ios_phone_streamer
-   xcodegen generate
-   open PhoneStreamer.xcodeproj
-   ```
-
-2. Build and sideload with AltStore.
-3. Continue with steps below to run the desktop bridge + pipeline.
-
-For native app setup details, see `ios_phone_streamer/README.md`.
-
-### Fallback: Expo app (snapshot-based)
-
-1. Start the phone bridge on your PC (repo root):
-
-   ```powershell
-   .\.venv\Scripts\python code/phone_stream_bridge.py --host 0.0.0.0 --port 8080
-   ```
-
-2. Start the Expo mobile app:
-
-   ```powershell
-   cd mobile
-   npm install
-   npx expo start
-   ```
-
-3. Open Expo Go on iPhone and scan the QR code.
-4. In the app, set:
-   - Host = your PC LAN IP (run `ipconfig` on Windows)
-   - Port = `8080`
-5. Press **Start Streaming** in the app.
-6. Verify stream on desktop:
-
-   ```powershell
-   .\.venv\Scripts\python code/view_esp32_stream.py --url http://127.0.0.1:8080/stream
-   ```
-
-7. Point the pipeline to the phone bridge in `config.yaml`:
-   - `esp32_url: "http://127.0.0.1:8080/stream"`
-
-8. Run the main app:
-
-   ```powershell
-   .\.venv\Scripts\python main.py
-   ```
-
-Notes:
-- Keep the iPhone app in the foreground while streaming.
-- Allow inbound TCP port `8080` on Windows firewall (Private network) if connection fails.
-- For Expo details, see `mobile/README.md`.
-- For native iOS details, see `ios_phone_streamer/README.md`.
+It prints, per move, what was read, the right move, the tier and the margin, then the auto-accept
+rate and the number of **wrong accepts** (target: 0). Details and current results:
+[docs/testing.md](docs/testing.md).
 
 ---
 
-## 6) ESP32-CAM Firmware Setup (Optional Legacy Source)
-
-File: `code/esp32_cam_stream.ino`
-
-1. Open in Arduino IDE.
-2. Set:
-   - `WIFI_SSID`
-   - `WIFI_PASSWORD`
-3. Set board to **AI Thinker ESP32-CAM**.
-4. Upload.
-5. Open Serial Monitor and read stream URL:
-   - `http://<esp32-ip>:81/stream`
-
-## 7) Config File
-
-File: `config.yaml`
-
-Important keys:
-- `esp32_url`: MJPEG endpoint
-- `corner_model_path`: `models/corners.pt`
-- `piece_model_path`: `models/pieces.pt`
-- `corner_conf`, `piece_conf`: detection confidence thresholds
-- `smoothing_frames`: temporal FEN window
-- `warp_size`: board warp output size (divisible by 8)
-- `rotate_180`: software 180-degree rotation fallback
-- display toggles:
-  - `show_square_labels`
-  - `show_confidence_scores`
-  - `show_piece_count_hud`
-  - `highlight_last_move`
-
----
-
-## 8) Training Models
-
-File: `code/train_models.py`
-
-### Dataset sources used
-
-- Corners dataset: [Roboflow Universe - Chessboard detection (4 corners)](https://universe.roboflow.com/chessboarddetection/chessboard-detection-4-corners)
-- Pieces dataset: [Roboflow Project - Chess Full (jay-tmdyh)](https://app.roboflow.com/jay-tmdyh/chess-full-cnkvv/browse?queryText=&pageSize=50&startingIndex=0&browseQuery=true)
-
-What the script does:
-- Detects dataset yaml recursively under `datasets/**/data.yaml`
-- Matches naming variants (spaces/underscores/case-insensitive)
-- Auto-fixes Roboflow path issues:
-  - creates `data.autofix.yaml` with absolute paths
-  - falls back `val -> train` when val set is missing
-- Trains both:
-  - pieces model (base: `yolo26m.pt`)
-  - corners model (base: `yolo26s.pt`)
-- Weights are auto-downloaded by Ultralytics on first run (requires `ultralytics>=8.4.0`).
-- `yolo26m` at `imgsz=800, batch=8` is tight on 8 GB VRAM. If pieces training OOMs, lower `batch` to 4 in `code/train_models.py`.
-- Copies best weights to:
-  - `models/pieces.pt`
-  - `models/corners.pt`
-
-Run:
-
-```powershell
-.\.venv\Scripts\python code/train_models.py
-```
-
-### Current memory-safe training defaults
-
-To avoid Windows pagefile/multiprocessing crashes, script uses:
-- `workers=0`
-- `cache=False`
-- `batch=8`
-- `imgsz=800`
-
-These are intentional stability defaults for your environment.
-
-### If only `pieces.pt` exists and `corners.pt` is missing
-
-This means pieces training completed but corners training did not finish/copy successfully.
-In that case, run corners-only training:
-
-```powershell
-.\.venv\Scripts\python -c "import runpy; ns=runpy.run_path('code/train_models.py'); ns['train_corners'](device=0)"
-```
-
-Then verify:
-
-```powershell
-ls models
-```
-
-You should have both `models/pieces.pt` and `models/corners.pt` before running `main.py`.
-
----
-
-## 9) Running the App
-
-```powershell
-.\.venv\Scripts\python main.py
-```
-
-Optional auto-start game:
-
-```powershell
-.\.venv\Scripts\python main.py --start
-```
-
-Startup prompt:
-- `Is white playing from bottom? (y/n)`
-
-OpenCV windows:
-- `Chess Vision` (raw stream + HUD/corners)
-- `Board View` (warped board + overlays)
-
-Keyboard controls:
-- `s` start game
-- `e` end game (prompts result)
-- `r` resign (prompts side)
-- `a` abort game (no save)
-- `q` quit
-
----
-
-## 10) Supabase
-
-Module: `src/supabase_client.py`
-
-Behavior:
-- Validates payload before insert
-- Inserts into `games` table
-- If insert fails:
-  - writes fallback JSON payload to `exports/failures/`
-  - raises `SupabaseInsertError`
-
-Gameplay is designed to keep local PGN as source-of-truth.
-
----
-
-## 11) Core Modules and Responsibilities
-
-- `src/stream.py`  
-  ESP32 URL validation, reachability check, frame validation, retry/backoff.
-
-- `src/corners.py`  
-  Corner model inference, confidence filtering, sorting, convex/area/bounds checks.
-
-- `src/warp.py`  
-  Perspective transform validation and top-down board generation.
-
-- `src/pieces.py`  
-  Piece detection, label normalization, board mapping, plausibility checks.
-
-- `src/fen.py`  
-  Converts board map to complete FEN with strict rank/key/value validation.
-
-- `src/validator.py`  
-  Legal position checks via `python-chess`.
-
-- `src/smoother.py`  
-  Temporal consensus over recent FENs.
-
-- `src/move_recorder.py`  
-  Legal move matching from stable FEN changes, SAN/UCI tracking.
-
-- `src/pgn_exporter.py`  
-  Builds and writes PGN, validates output file.
-
-- `src/display.py`  
-  All rendering logic (HUD, boxes, labels, highlights, board grid).
-
-- `src/pipeline.py`  
-  End-to-end orchestration and runtime state machine.
-
----
-
-## 12) Tests
-
-Run tests:
-
-```powershell
-.\.venv\Scripts\python -m pytest -q
-```
-
-Current suite covers:
-- stream validation
-- corner logic
-- warp checks
-- piece mapping/plausibility
-- FEN generation
-- legality validation
-- smoothing behavior
-- move recorder scenarios
-- PGN exporter
-- Supabase fallback
-- display output shape/behavior
-
----
-
-## 13) Troubleshooting
-
-### A) `CUDA is not available`
-- Ensure CUDA wheel installed in `.venv`:
-  - `torch==...+cu121`
-- Re-check with `torch.cuda.is_available()`
-
-### B) `Torch not compiled with CUDA enabled`
-- You installed CPU-only torch.
-- Reinstall torch from CUDA index URL.
-
-### C) `WinError 1455 ... cublas64_12.dll`
-- Windows pagefile too small during worker spawn.
-- Current script mitigates with `workers=0` and `cache=False`.
-- Also keep machine awake during training.
-
-### D) `images not found` from Ultralytics
-- Dataset path mismatch in Roboflow export.
-- Script now auto-fixes yaml paths and folder naming variants.
-
-### E) Repeated `corrupt JPEG restored and saved`
-- Common with Roboflow-exported images.
-- Ultralytics is repairing them; warning is usually non-fatal.
-
-### F) Training seems stuck
-- Wait for first epoch logs after dataset scan.
-- Watch GPU usage in Task Manager.
-- Ensure terminal is still producing output.
-
----
-
-## 14) Operational Notes
-
-- Keep `.venv/` out of git (already ignored).
-- Keep `.env` private.
-- Ensure `models/corners.pt` and `models/pieces.pt` exist before `main.py`.
-- For best move quality, use stable camera mount and consistent board lighting.
-
----
-
-## 15) Quick Start (Minimal)
-
-```powershell
-py -3.12 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install --index-url https://download.pytorch.org/whl/cu121 torch torchvision torchaudio
-python -m pip install -r requirements.txt
-copy .env.example .env
-python code/train_models.py
-python main.py
-```
-
+## Status and known limitations
+
+- Working: camera control, automatic calibration with pieces on the board, orientation, motion
+  gating, move matching, tiers, PGN, Stockfish display, replay harness.
+- **Being verified on the real board:** a full game. The first real move (e4) was read correctly;
+  a too-strict confidence check made it ask instead of auto-accepting, which is fixed.
+- **Camera speed:** about 0.4–2.5 frames per second with occasional stalls. The ESP32 itself is the
+  bottleneck ([docs/hardware.md](docs/hardware.md#camera-speed)). It slows down move reading, it
+  doesn't cause wrong moves.
+- Black pieces on dark squares are hard for the per-square health check (not for move reading).
+- Under-promotion relies on the YOLO model, which recognises this set poorly; default is a queen,
+  and you can correct it with Z and T.
+
+## Further documentation
+
+| Document | Contents |
+|---|---|
+| [docs/hardware.md](docs/hardware.md) | ESP32 board, firmware, Arduino settings, Wi-Fi hotspot, camera orientation, camera speed |
+| [docs/usage.md](docs/usage.md) | Every command and key, a typical game, recovering from mistakes |
+| [docs/how-it-works.md](docs/how-it-works.md) | The pipeline in detail, with the maths |
+| [docs/configuration.md](docs/configuration.md) | Every setting in `config.yaml` |
+| [docs/testing.md](docs/testing.md) | Tests, the replay harness, QA results |
+| [docs/troubleshooting.md](docs/troubleshooting.md) | Symptoms and fixes |
+| [docs/original-spec.md](docs/original-spec.md) | The original build specification (some parts since changed) |
