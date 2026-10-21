@@ -508,10 +508,9 @@ class GameSession:
             move = self.hooks.ask_user(self.board, candidates)
             if move is not None:
                 self._accept(move, Tier.USER, self.last_result, frame)
-            else:
-                self._set_reference(frame)
-                self.phase = Phase.PLAYING
-            return
+                return
+            # no answer known: leave the question open, like a player who doesn't press a key, so later
+            # reads can still settle it (a clean re-read, a takeback, an adjusted piece)
         self.choices = candidates
         self._ask_frame = frame
         self.phase = Phase.ASK_USER

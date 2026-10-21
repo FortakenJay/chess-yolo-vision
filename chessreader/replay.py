@@ -107,9 +107,14 @@ def run_replay(settings: Settings, path: Path, pgn_path: Path | None = None, use
         raise ValueError(error)
 
     reports: list[PlyReport] = []
+    rows: list[str] = []  # the printed table, in order, takebacks included
     for image, ts, _ in frames[start + 1:]:
         before = len(session.moves)
+        last = session.moves[-1].uci if session.moves else None
         session.process(image, ts)
+        if len(session.moves) < before:  # put back by hand (or undone)
+            rows.append(f"{before:>4} {last:>7} {'':>7} {'':>4} {'':>8} taken back")
+            before = len(session.moves)
         while session.phase == Phase.WAIT_LLM:  # replay waits for the LLM instead of streaming on
             if session._llm_thread:
                 session._llm_thread.join()
@@ -117,6 +122,9 @@ def run_replay(settings: Settings, path: Path, pgn_path: Path | None = None, use
         for log in session.moves[before:]:
             want = truth[log.ply - 1].uci() if log.ply - 1 < len(truth) else None
             reports.append(PlyReport(log.ply, log.uci, want, log.tier, log.margin))
+            r = reports[-1]
+            mark = "" if r.correct is None else ("ok" if r.correct else "WRONG")
+            rows.append(f"{r.ply:>4} {r.played:>7} {r.truth or '-':>7} {r.tier:>4} {r.margin:>8.0f} {mark}")
             if want is not None and log.uci != want:
                 logger.warning("ply %d: read %s, truth %s (tier %d, margin %.0f)", log.ply, log.uci, want, log.tier, log.margin)
                 session.replace_last_move(chess.Move.from_uci(want))
@@ -136,9 +144,10 @@ def run_replay(settings: Settings, path: Path, pgn_path: Path | None = None, use
         "wrong_accepts": len(wrong),
     }
     print(f"\n{'ply':>4} {'read':>7} {'truth':>7} {'tier':>4} {'margin':>8}")
-    for r in reports:
-        mark = "" if r.correct is None else ("ok" if r.correct else "WRONG")
-        print(f"{r.ply:>4} {r.played:>7} {r.truth or '-':>7} {r.tier:>4} {r.margin:>8.0f} {mark}")
+    for row in rows:
+        print(row)
+    final = " ".join(m.uci() for m in session.board.move_stack)
+    print(f"\nfinal position after: {final or '(no moves)'}")
     print(f"\nauto-accept rate {summary['auto_accept_rate']:.0%} | wrong accepts {summary['wrong_accepts']} | "
           f"tiers {summary['by_tier']} | read {summary['moves_read']}/{summary['moves_in_truth'] or '?'}")
     return summary

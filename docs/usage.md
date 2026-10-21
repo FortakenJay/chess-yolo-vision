@@ -95,5 +95,7 @@ the moves that were really played, save those moves as a PGN and run:
 .\.venv\Scripts\python run.py replay sessions\<date>_<time> --pgn my_game.pgn
 ```
 
+Without `--pgn`, `replay` shows what was read, takebacks included, and the final position.
+
 `record` saves plain video instead; `replay` accepts video files too (it then finds the board in
 the first frame, so start the video on the starting position).

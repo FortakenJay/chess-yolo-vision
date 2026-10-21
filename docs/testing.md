@@ -49,7 +49,10 @@ auto-accept rate 100% | wrong accepts 0 | tiers {1: 1, 2: 0, 3: 0, 4: 0} | read 
 - **wrong accepts**: moves accepted without asking that were wrong. **The target is 0**; the command
   exits with code 2 otherwise.
 - When it would ask you (tier 4), the answer is taken from the PGN. After a wrong accept the move is
-  corrected so the rest of the game still counts.
+  corrected so the rest of the game still counts. Without a PGN (or past its end) the question stays
+  open, as with a player who doesn't press a key, so later reads settle it the way they would live.
+- Moves put back by hand show up in the table as `taken back` rows, and the last line is the final
+  position, so a session with takebacks can be checked without a PGN.
 - `--llm` allows tier 3 (costs API calls; off by default).
 - Replay PGNs are written to `<session>/replay/`, not `exports/`.
 
