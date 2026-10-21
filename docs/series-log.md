@@ -2,21 +2,21 @@
 
 A Freenove ESP32-WROVER with an OV2640 watches a roll-up vinyl set from about 75° overhead. That module brings up its own open Wi-Fi, `ChessCam`, and sits at `192.168.4.1`. Frames arrive around one per second, 800×600, dim and green. The PC records the game, asks Stockfish for an evaluation, and writes a PGN. Which ply was played comes from the pictures and the rules.
 
-Dates on the commits are 2026-10-16 and 2026-10-17. Author on each one: jih bin luo liu. Remote: `https://github.com/FortakenJay/chess-yolo-vision.git`, branch `main`. GitHub currently has `61ed1f5`. Seven later commits, through `85bafe7`, exist only on this machine until `main` is pushed.
+Dates on the commits are 2026-10-16 and 2026-10-17. Author on each one: jih bin luo liu. Remote: `https://github.com/FortakenJay/chess-yolo-vision.git`, branch `main`. Everything below is on GitHub, pushed 2026-10-21; the fix commit of each episode is tagged `ep-3` … `ep-9`.
 
-| Commit | Where | What the afternoon showed |
+| Commit | Tag | What the afternoon showed |
 |---|---|---|
-| `da52aaa` | GitHub | `.gitattributes` only |
-| `000feda` | GitHub | First full tree |
-| `954ccf9` | GitHub | Piece model abandoned; difference-matching takes over |
-| `61ed1f5` | GitHub | Camera drift followed instead of trusted from disk |
-| `7bbbb24` | local | Takebacks, texture channel, exposure offset |
-| `1c646cf` | local | Faint e7–e5 kept |
-| `ef2d7ac` | local | Forearm beside the vinyl |
-| `a1a87ba` | local | Sleeve over h1, dots, Stockfish lookup |
-| `615119e` | local | Shaded empties, a pawn stood back up |
-| `ec98211` | local | A stray Ke7, an R that resigned, an opening book |
-| `85bafe7` | local | Replays that behave like the person at the board |
+| `da52aaa` |  | `.gitattributes` only |
+| `000feda` |  | First full tree |
+| `954ccf9` |  | Piece model abandoned; difference-matching takes over |
+| `61ed1f5` | `ep-3` | Camera drift followed instead of trusted from disk |
+| `7bbbb24` | `ep-4` | Takebacks, texture channel, exposure offset |
+| `1c646cf` | `ep-5` | Faint e7–e5 kept |
+| `ef2d7ac` | `ep-6` | Forearm beside the vinyl |
+| `a1a87ba` | `ep-7` | Sleeve over h1, dots, Stockfish lookup |
+| `615119e` | `ep-8` | Shaded empties, a pawn stood back up |
+| `ec98211` | `ep-9` | A stray Ke7, an R that resigned, an opening book |
+| `85bafe7` |  | Replays that behave like the person at the board |
 
 Live play writes every JPEG under `sessions/<date>_<time>/`. `run.py replay` feeds those JPEGs through the same `session.py` live play uses. The number that decides a fix is **wrong accepts**: a continuation taken with no question that was not the one played. Zero is the target. Replay exits 2 otherwise. Each regression test is written so the code from the day before fails it.
 
@@ -222,7 +222,7 @@ New drawings live in `tests/scene.py`: a low side view, and a near-overhead view
 
 One row in `docs/testing.md` is still open. The 16-ply test game (`tests/data/test_game.pgn`, through 8.Nc3 O-O) has a synthetic replay at 16/16. The same game recorded on this vinyl and replayed against that PGN is marked pending.
 
-Episodes 4–9 are not on GitHub. A video description that links those hashes will 404 until `main` is pushed.
+A video description can link an episode as `https://github.com/FortakenJay/chess-yolo-vision/tree/ep-N`, or a single fix as `.../commit/<hash>`.
 
 ---
 
@@ -230,23 +230,27 @@ Episodes 4–9 are not on GitHub. A video description that links those hashes wi
 
 Every episode is one commit, and the session that exposed the fault is on disk. Check out the commit before the fix, replay the session, then check out the fix and replay again. Same JPEGs, two outcomes.
 
-| Episode | Before | Fix | Session(s) | What changes on screen |
-|---|---|---|---|---|
-| 3 | `954ccf9` | `61ed1f5` | `20261017_093628`, `20261017_093908` | Stale grid reads nothing (or a phantom h3 under the cable); after, the vinyl is found again |
-| 4 | `61ed1f5` | `7bbbb24` | `20261017_095558` | d5, d6, Nc6, h5 put back by hand: before, the PGN walks away; after, each `was taken back` |
-| 5 | `7bbbb24` | `1c646cf` | `20261017_101625` | e7–e5 dropped as lighting, then accepted at tier 1 |
-| 6 | `1c646cf` | `ef2d7ac` | `20261017_102849` | c5 asked and a phantom Kh1; after, c5 tier 1, no Kh1 |
-| 7 | `ef2d7ac` | `a1a87ba` | `20261017_104913` | Sleeve over h1 read as Rg1 and Kh1; after, a question while the sleeve is there |
-| 8 | `a1a87ba` | `615119e` | `20261017_111040` | Pawn stood up asks `b4 b3 h3`, dots on a5/a6; after, nothing asked, no stray dots |
-| 9 | `615119e` | `ec98211` | `20261017_112825` | Arrows and the R key are live-only; film them with `run.py play` |
+| Episode | Tag | Before | Fix | Session(s) | What changes on screen |
+|---|---|---|---|---|---|
+| 3 | `ep-3` | `954ccf9` | `61ed1f5` | `20261017_093628`, `20261017_093908` | Stale grid reads nothing (or a phantom h3 under the cable); after, the vinyl is found again |
+| 4 | `ep-4` | `61ed1f5` | `7bbbb24` | `20261017_095558` | d5, d6, Nc6, h5 put back by hand: before, the PGN walks away; after, each `was taken back` |
+| 5 | `ep-5` | `7bbbb24` | `1c646cf` | `20261017_101625` | e7–e5 dropped as lighting, then accepted at tier 1 |
+| 6 | `ep-6` | `1c646cf` | `ef2d7ac` | `20261017_102849` | c5 asked and a phantom Kh1; after, c5 tier 1, no Kh1 |
+| 7 | `ep-7` | `ef2d7ac` | `a1a87ba` | `20261017_104913` | Sleeve over h1 read as Rg1 and Kh1; after, a question while the sleeve is there |
+| 8 | `ep-8` | `a1a87ba` | `615119e` | `20261017_111040` | Pawn stood up asks `b4 b3 h3`, dots on a5/a6; after, nothing asked, no stray dots |
+| 9 | `ep-9` | `615119e` | `ec98211` | `20261017_112825` | Arrows and the R key are live-only; film them with `run.py play` |
+
+Each fix commit carries a tag, `ep-3` … `ep-9`, so an episode can be checked out by name; `ep-4^` is the code just before it.
 
 ```bash
-git switch --detach 7bbbb24^          # the code just before episode 4
+git switch --detach ep-4^             # the code just before episode 4
 .venv/bin/python run.py replay sessions/20261017_095558
-git switch --detach 7bbbb24           # the fix
+git switch --detach ep-4              # the fix
 .venv/bin/python run.py replay sessions/20261017_095558
 git switch main
 ```
+
+On GitHub the same tags are under **Tags**, and `https://github.com/FortakenJay/chess-yolo-vision/tree/ep-4` shows the repo as it was for episode 4.
 
 `replay` prints each ply it took, its tier and margin, `taken back` rows, and the final position. Commits before `85bafe7` print only the plies taken, and their replay answers an open question with "no move", which can derail a session that the live code handled better. For an honest "before", show that day's live log too: `logs/run_<date>_<time>.log` is what the code at the table actually did. The log has every settled reading (`read: change ... best ... margin ...`), which is the frame-by-frame evidence. Without `--pgn`, a replay reports what it read; sessions with takebacks cannot be scored against a PGN, so compare the `Move N` and `was taken back` lines instead.
 
