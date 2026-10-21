@@ -202,7 +202,8 @@ When the board becomes still (after following any camera shift):
    finish, it decides with the reads it has.
 7. **Tier 3** (off by default): before/after photos and the top 3 moves go to a vision LLM (Anthropic
    API, `claude-sonnet-5-5`), which must answer with one of the listed moves.
-8. **Tier 4**: the top 3 are drawn as numbered arrows; you press 1–3 or type it. The reference
+8. **Tier 4**: the top 3 are drawn as thin arrows with numbered badges (the last-move tint is
+   hidden meanwhile); you press 1–3 or type it. The reference
    becomes the frame from when the question was asked, so a move made in the meantime isn't lost,
    and it's read right after you answer. That frame may still show a hand: if the next still board
    isn't a clean move from it, the board as it is then becomes the reference. While a question is
@@ -234,7 +235,8 @@ promotion square and its colour matches. The most confident piece type wins; oth
 
 ## 10. Output — `storage.py`, `engine.py`, `play.py`
 
-- **PGN**: standard tags, the moves, and a comment per move with the time and tier. Written to a
+- **PGN**: standard tags plus `ECO` and `Opening` (step 11), the moves, and a comment per move with
+  the time and tier. A reset (**R**) within the same second gets its own file (`_2`). Written to a
   temporary file and swapped in, after every move. A failed write is logged and retried; it never
   stops the game.
 - **Stockfish** is found from `engine.path`; if that file doesn't exist (a path written on another
@@ -242,3 +244,23 @@ promotion square and its colour matches. The most confident piece type wins; oth
   project. It runs in its own thread: 0.5 s per position, 3 lines, win/draw/loss when the engine
   supports it. Only the newest position is analysed. Results go to the Board window.
 - **Session recording**: every frame plus the moves and calibration, for `replay`.
+
+## 11. Opening theory — `openings.py`
+
+`chessreader/data/openings.tsv` is an opening book: 1,370 named lines (ECO code, name, moves;
+Lichess-style names, A00–E99) covering 2,218 distinct positions, from every first move to main
+variations a few moves deep: Sicilian (Najdorf, Dragon, Sveshnikov, Taimanov, …), Ruy Lopez (Berlin,
+Marshall, Breyer, …), Italian, French, Caro-Kann, Queen's Gambit, Slav, King's Indian, Nimzo-Indian,
+Grünfeld, English, London, and the gambits. It was written by hand for this project, not
+downloaded; every line is checked for legality by the tests.
+
+- Positions are keyed by FEN without move counters, so **transpositions** are recognised:
+  1.e4 e5 2.Bc4 Nf6 3.Nf3 is shown as Petrov's Defense: Italian Variation.
+- The **name** is the deepest named position the game has reached; it stays after the game leaves
+  the book ("C40 McConnell Defense ... out of book at move 3").
+- **Theory moves** are the moves from the current position that stay in the book, the most
+  mainline first (by how many book lines continue through them). The Board window shows up to
+  `openings.show_book_moves` of them, hidden in training mode like the best move.
+- Loaded once at startup (~0.3 s); a lookup takes about 1 ms. A missing or broken book only turns
+  the opening display and PGN tags off. Any TSV with the columns `eco`, `name`, `pgn` can replace it
+  (`openings.book`).

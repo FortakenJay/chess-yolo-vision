@@ -17,6 +17,7 @@ python-chess, shows Stockfish's evaluation live on the computer screen, and save
   move was played**, so blunders are recorded as played.
 - It copes with a camera that sways or gets nudged (it follows the board), black pieces on dark
   squares, and moves you take back by hand (they're undone automatically).
+- It names the opening as you play and shows the book's theory moves (1,370 lines, ECO A00–E99).
 
 ---
 
@@ -114,12 +115,14 @@ Arduino IDE settings, flashing, camera orientation and the camera speed problem 
    is fine.
 3. Play normally. After each move, take your hand off the board and away from its edges; the move is
    read once the board has been still for about a second.
-4. If the **Board** window shows yellow arrows numbered 1–3, press the number of the move that was
+4. If the **Board** window shows thin yellow arrows with numbered badges 1–3, press the number of the move that was
    played (or **T** to type it). If you just move your hand away instead, a clear re-read is
    accepted without an answer.
 5. Changed your mind? Put the piece back where it was: the move is taken back automatically.
    Straightening a piece (or standing a fallen one back up) isn't a move and isn't asked about.
-6. End with **E** (you'll be asked the result in the terminal), or **R** if someone resigned.
+6. End with **E** (you'll be asked the result in the terminal), or **G** if someone resigned.
+   Made a mess of it? **R** resets: the game so far is kept as an unfinished PGN and a new one
+   starts from the starting position.
 
 ### Keys (click a window first)
 
@@ -132,7 +135,8 @@ Arduino IDE settings, flashing, camera orientation and the camera speed problem 
 | Z | Undo the last move (if the board still shows it, you'll be asked for the right one). Not needed when you put a move back by hand |
 | C | Recalibrate, if the board or camera moved more than it can follow. Pieces can stay where they are |
 | E | End the game and enter the result |
-| R | Resign (enter who resigned) |
+| R | Reset: keep the game so far as an unfinished PGN and start over from the starting position (right away if it's set up) |
+| G | Give up / resign (enter who resigned) |
 | A | Abort the game (PGN kept, game marked unfinished) |
 | N | New game after one has ended |
 | Q | Quit (an unfinished game is saved with result `*`) |
@@ -145,9 +149,9 @@ More detail: [docs/usage.md](docs/usage.md).
 
 | Output | Where | Notes |
 |---|---|---|
-| **Board** window | screen | Top-down board, last move arrow, dots for what the camera sees per square (refreshed after every move, shown only when sure), large eval + best move + win/draw/loss %, move list, Stockfish's top 2 lines, eval bar |
+| **Board** window | screen | Top-down board, last move as a soft tint of its two squares, dots for what the camera sees per square (refreshed after every move, shown only when sure), large eval + best move + win/draw/loss %, move list, opening name + theory moves, Stockfish's top 2 lines, eval bar |
 | **Camera** window | screen | Live camera, board outline, changed pixels in red, the outline of the move being considered, status line |
-| PGN | `exports/game_<date>_<time>.pgn` | Standard PGN, rewritten after every move; each move has a comment with its time and how it was confirmed |
+| PGN | `exports/game_<date>_<time>.pgn` | Standard PGN with `ECO`/`Opening` tags, rewritten after every move; each move has a comment with its time and how it was confirmed |
 | Session recording | `sessions/<date>_<time>/` | Every frame (`frames/`), `frames.csv`, `moves.csv`, `calibration.json`. Used by `replay` |
 | Calibration | `calib/` | Board position in the camera image. Found again at each game start and followed when the camera shifts |
 | Log | `logs/run_<date>_<time>.log` | Everything, including each move read with its score |
@@ -192,6 +196,8 @@ frame ─▶ motion gate ─▶ change map (before vs after) ─▶ score every 
    every 10 s the board edges are checked to catch a move of the board or camera too big to follow.
 10. **Promotion.** The piece type is the only thing read by the YOLO model (`models/pieces.pt`);
    default is a queen.
+11. **Openings.** A bundled book (1,370 lines, positions matched so transpositions count) names the
+   opening and lists the theory moves from the current position.
 
 Full explanation with the maths: [docs/how-it-works.md](docs/how-it-works.md).
 
@@ -218,7 +224,9 @@ chess-yolo-vision/
 │   ├── health.py           sync and drift checks
 │   ├── tracking.py         follows camera shifts (feature matching between frames)
 │   ├── engine.py           Stockfish in a background thread
-│   ├── storage.py          PGN writer
+│   ├── storage.py          PGN writer (with ECO/Opening tags)
+│   ├── openings.py         opening book: name, ECO, theory moves
+│   ├── data/openings.tsv   the book: 1,370 named lines
 │   ├── replay.py           replay a recorded session and score it against a PGN
 │   ├── display.py          drawing helpers
 │   └── settings.py         config loading
@@ -247,6 +255,7 @@ likely to touch:
 | `confirm.t1_margin` | `1500` | How clearly a move must win to be accepted without asking |
 | `reader.texture_weight` | `5` | How much texture counts in the change map (black pieces on dark squares) |
 | `health.track_min_px` | `2` | Camera shifts larger than this are followed |
+| `openings.show_book_moves` | `3` | Theory moves shown in the Board window (`0` = opening name only) |
 | `storage.white` / `black` | `White` / `Black` | Player names in the PGN |
 | `llm.enabled` | `false` | Tier 3; needs `ANTHROPIC_API_KEY` in a `.env` file |
 
@@ -260,10 +269,11 @@ Every setting is explained in [docs/configuration.md](docs/configuration.md).
 .\.venv\Scripts\python -m pytest tests -q
 ```
 
-35 tests: calibration (corner extrapolation, never mirroring, save/load), the frame reader, the
+48 tests: calibration (corner extrapolation, never mirroring, save/load), the frame reader, the
 change map (black on dark, nudged edges, exposure), move matching on synthetic camera scenes
 (captures, both castles, en passant, promotion, missed moves, faint black-on-dark moves), finding
-Stockfish, and whole recorded games replayed end to end, including a bumped camera, moves taken
+Stockfish, the opening book (every line legal, transpositions), the Board window and the R reset,
+and whole recorded games replayed end to end, including a bumped camera, moves taken
 back by hand, a hand or sleeve resting beside or on the board's edge, and a knocked-over pawn
 stood back up.
 

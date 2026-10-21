@@ -99,6 +99,14 @@ the margins of real moves before changing it.
 | `multipv` | `3` | Lines analysed (2 are shown) |
 | `show_best_moves` | `true` | `false` = training/review mode: hide best move and lines until the game ends |
 
+## openings — opening name and theory
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `true` | Opening name + theory moves in the Board window, `ECO`/`Opening` tags in the PGN |
+| `book` | `''` | Opening book TSV with columns `eco`, `name`, `pgn`. Empty: the bundled `chessreader/data/openings.tsv` |
+| `show_book_moves` | `3` | Theory moves shown from the current position (`0` = name only). Hidden in training mode |
+
 ## storage
 
 | Key | Default | Meaning |

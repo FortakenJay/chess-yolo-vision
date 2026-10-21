@@ -85,6 +85,11 @@ engine:
   multipv: 3
   show_best_moves: true      # false = training/review mode (hide best moves while playing)
 
+openings:                    # opening name + theory moves in the Board window, ECO/Opening tags in the PGN
+  enabled: true
+  book: ''                   # opening book TSV (eco, name, pgn); empty = chessreader/data/openings.tsv
+  show_book_moves: 3         # theory moves shown from the current position; hidden in training mode
+
 storage:
   exports_dir: exports
   sessions_dir: sessions   # every frame of every game, for replay testing

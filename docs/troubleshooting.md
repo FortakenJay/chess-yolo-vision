@@ -47,6 +47,8 @@ and unexplained share.
 | "Something is resting at the board's edge; waiting." | No move fits and the change runs off the board: move the sleeve or hand away |
 | Promotion recorded as a queen but it was a knight | **Z**, then **T** `e8=N` (for example) |
 | Keys do nothing | Click one of the program's windows first |
+| The game got messed up | **R** resets: the game so far is kept as an unfinished PGN, a new one starts from the starting position |
+| The opening name is missing or wrong | The log says whether the book loaded. Names come from `chessreader/data/openings.tsv`; fix or add a line there (`eco`, `name`, `pgn`) |
 
 ## Engine
 

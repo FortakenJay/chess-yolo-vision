@@ -188,7 +188,8 @@ class GameSession:
         self._update_occupancy(frame)
         st = self.s.storage
         from .settings import resolve_path
-        self.record = GameRecord(resolve_path(st.exports_dir), st.white, st.black, starting_fen=position.fen())
+        self.record = GameRecord(resolve_path(st.exports_dir), st.white, st.black, starting_fen=position.fen(),
+                                 opening_book=self._opening_book())
         self._set_reference(frame)
         self._ref_stack.clear()
         self.moves.clear()
@@ -200,6 +201,20 @@ class GameSession:
         if self.hooks.analyse:
             self.hooks.analyse(self.board)
         return None
+
+    def _opening_book(self):
+        """The book for the PGN's ECO/Opening tags per the openings settings; None when off or unreadable."""
+        o = self.s.openings
+        if not o.enabled:
+            return None
+        try:
+            from .openings import book_from
+            from .settings import resolve_path
+
+            return book_from(resolve_path(o.book) if o.book else None)
+        except Exception as exc:  # a broken book must never stop a game
+            logger.warning("Opening book not loaded (%s); PGN gets no opening tags", exc)
+            return None
 
     def _learn_tone_contrast(self) -> None:
         """How visible a piece is on a square of its own tone, on this board in this light."""

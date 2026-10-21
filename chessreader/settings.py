@@ -133,6 +133,12 @@ class EngineSettings(BaseModel):
     show_best_moves: bool = True       # false = training/review mode: hide best moves while playing
 
 
+class OpeningsSettings(BaseModel):
+    enabled: bool = True
+    book: str = ""                     # opening book TSV (eco, name, pgn); empty = the bundled one
+    show_book_moves: int = 3           # theory moves shown from the current position (0 = name only)
+
+
 class StorageSettings(BaseModel):
     exports_dir: str = "exports"
     sessions_dir: str = "sessions"
@@ -156,6 +162,7 @@ class Settings(BaseModel):
     llm: LlmSettings = Field(default_factory=LlmSettings)
     health: HealthSettings = Field(default_factory=HealthSettings)
     engine: EngineSettings = Field(default_factory=EngineSettings)
+    openings: OpeningsSettings = Field(default_factory=OpeningsSettings)
     storage: StorageSettings = Field(default_factory=StorageSettings)
     pieces: PiecesSettings = Field(default_factory=PiecesSettings)
     view: ViewSettings = Field(default_factory=ViewSettings)

@@ -13,10 +13,11 @@ from dotenv import load_dotenv
 
 from .calibration import Calibration, CalibrationError, auto_calibrate, run_calibration
 from .confirm import LlmJudge
-from .display import (GREEN, RED, YELLOW, draw_change, draw_eval_bar, draw_grid, draw_hud, draw_mask_outline,
-                      draw_move, draw_occupancy, draw_quad, put_text, square_px)
+from .display import (GREEN, RED, YELLOW, draw_change, draw_choices, draw_eval_bar, draw_grid, draw_hud,
+                      draw_mask_outline, draw_occupancy, draw_quad, highlight_move, put_text, square_px)
 from .engine import EngineWorker, find_stockfish
 from .geometry import BoardCamera
+from .health import compare_occupancy
 from .session import GameSession, Phase, SessionHooks
 from .settings import PROJECT_DIR, Settings, resolve_path
 from .stream import FrameGrabber
@@ -25,7 +26,8 @@ logger = logging.getLogger(__name__)
 
 CAMERA_WINDOW = "Camera"
 BOARD_WINDOW = "Board"
-KEYS = "S start  E end  R resign  A abort  N new  Z undo  X ignore  T type move  C recalibrate  Q quit"
+KEYS = "S start  E end  G resign  A abort  N new  R reset  Z undo  X ignore  T type move  C recalibrate  Q quit"
+SETUP_MESSAGE = "Set up the starting position, then press S."
 
 
 def make_promotion_chooser(settings: Settings, session_ref: list):
@@ -118,6 +120,52 @@ def render_camera(session: GameSession, frame: np.ndarray, grabber: FrameGrabber
     return vis
 
 
+PANEL_HEIGHT = 214  # eval line, moves, opening, status, 2 engine lines
+_opening_cache: dict = {}
+
+
+def opening_book(settings: Settings):
+    """The opening book (loaded once), or None when it's off or can't be loaded."""
+    o = settings.openings
+    if not o.enabled:
+        return None
+    key = ("book", o.book or "")
+    if key not in _opening_cache:
+        try:
+            from .openings import book_from
+
+            _opening_cache[key] = book_from(resolve_path(o.book) if o.book else None)
+        except Exception as exc:  # a broken book must never stop the game
+            logger.warning("Opening book not loaded (%s); openings off", exc)
+            _opening_cache[key] = None
+    return _opening_cache[key]
+
+
+def opening_text(settings: Settings, board: chess.Board, reveal: bool) -> str | None:
+    """'C60 Ruy Lopez   theory: a6 Nf6 d6' or '... out of book at move 6', for the Board panel."""
+    book = opening_book(settings)
+    if book is None:
+        return None
+    key = ("text", board.fen(), len(board.move_stack), reveal)
+    if key not in _opening_cache:
+        info = book.lookup(board)
+        if info.name is None and not info.in_book:
+            text = None
+        else:
+            text = f"{info.eco or ''} {info.name or ''}".strip()
+            n = settings.openings.show_book_moves
+            if info.in_book and reveal and n > 0:
+                moves = book.book_san(board, n)
+                if moves:
+                    text += "   theory: " + " ".join(moves)
+            elif info.left_book_ply:
+                text += f"   (out of book at move {(info.left_book_ply + 1) // 2})"
+        if len(_opening_cache) > 500:
+            _opening_cache.clear()
+        _opening_cache[key] = text
+    return _opening_cache[key]
+
+
 def render_board(session: GameSession, frame: np.ndarray, settings: Settings) -> np.ndarray:
     try:
         warp = session.cal.warp(frame)
@@ -126,23 +174,22 @@ def render_board(session: GameSession, frame: np.ndarray, settings: Settings) ->
         draw_hud(warp, [str(exc)[:60]], color=RED)
         return warp
     draw_grid(warp, settings.view.show_labels and session.phase != Phase.WAIT_START)
-    draw_occupancy(warp, session.occupancy)
     board = session.board
-    if board.move_stack:
-        draw_move(warp, board.peek())
-    for i, move in enumerate(session.choices):
-        draw_move(warp, move, YELLOW)
-        x, y = square_px(move.to_square, warp.shape[0])
-        put_text(warp, str(i + 1), (x - 8, y + 10), scale=1.2, color=YELLOW, thickness=2)
+    # last move as a tinted from/to square pair; while a question is open only the candidates show
+    if board.move_stack and not session.choices:
+        highlight_move(warp, board.peek())
+    draw_occupancy(warp, session.occupancy)
     for sq in session.desync:
         x, y = square_px(chess.parse_square(sq), warp.shape[0])
         half = warp.shape[0] // 16
         cv2.rectangle(warp, (x - half, y - half), (x + half, y + half), RED, 3)
+    if session.choices:
+        draw_choices(warp, session.choices, YELLOW)
 
     an = session.analysis
     # best moves stay hidden during play in training/review mode (engine.show_best_moves: false)
     reveal = settings.engine.show_best_moves or session.phase == Phase.ENDED
-    panel = np.full((190, warp.shape[1], 3), 25, np.uint8)
+    panel = np.full((PANEL_HEIGHT, warp.shape[1], 3), 25, np.uint8)
 
     # big eval + best move, like the e-ink display would have shown
     eval_text = an.eval_text if an else "..."
@@ -160,12 +207,64 @@ def render_board(session: GameSession, frame: np.ndarray, settings: Settings) ->
         sans.append(prefix + replay.san(move))
         replay.push(move)
     tier = f"read by tier {session.last_tier}" if session.last_tier else ""
-    lines = [" ".join(sans[-12:]) or "(no moves yet)", f"{session.phase.value}   {tier}"]
+    lines = [" ".join(sans[-12:]) or "(no moves yet)"]
+    opening = opening_text(settings, board, reveal) if session.record else None
+    lines.append(opening[:80] if opening else "")
+    lines.append(f"{session.phase.value}   {tier}")
     if an and reveal:
         lines += [f"{ev}  {line}" for ev, line in an.lines[:2]]
     draw_hud(panel, lines, origin=(12, 92))
     out = np.vstack([warp, panel])
     return draw_eval_bar(out, an.eval_cp if an else None, an.mate if an else None)
+
+
+def looks_like_start(session: GameSession, frame: np.ndarray) -> bool | None:
+    """Does the frame show the starting position rather than the game's current one? None = can't tell.
+
+    Uses the square looks the session learned at its start. A low camera sees a few squares wrong
+    whatever the position (pieces lean over their neighbours), so this compares how many squares
+    disagree with the start against how many disagree with the position the game is at.
+    """
+    if session.cam is None or not session.occ_reader.templates:
+        return None
+    start, now = chess.Board(), session.board
+    if now.board_fen() == start.board_fen():
+        return None
+    try:
+        warped = session.cal.warp(frame)
+    except CalibrationError:
+        return None
+    min_conf = session.s.health.sync_min_confidence
+    vs_start = compare_occupancy(session.occ_reader.read(warped, session.cam, start), start, min_conf)
+    vs_now = compare_occupancy(session.occ_reader.read(warped, session.cam, now), now, min_conf)
+    if not vs_start.checked:
+        return None
+    logger.debug("Reset: %d squares off the start position, %d off the game", len(vs_start.mismatches),
+                 len(vs_now.mismatches))
+    return len(vs_start.mismatches) < len(vs_now.mismatches)
+
+
+def reset_game(session: GameSession, frame: np.ndarray | None, new_session) -> GameSession:
+    """R: end the current game (its PGN stays, result *) and start a fresh one, right away if the start position is up.
+
+    Works in any phase. new_session(cal) builds the next GameSession, as N does.
+    """
+    old_record = session.record
+    if old_record and session.phase != Phase.ENDED:
+        session.end("unknown")
+    at_start = looks_like_start(session, frame) if frame is not None else False
+    logger.info("Game reset by the player (%d plies dropped%s)", len(session.moves),
+                f", PGN kept: {old_record.path}" if old_record else "")
+    session.close()
+    fresh = new_session(session.cal)
+    fresh.message = SETUP_MESSAGE
+    if frame is not None and at_start is not False:
+        error = fresh.start_game(frame)
+        if error:
+            fresh.message = f"{error} Then press S."
+    if fresh.phase == Phase.PLAYING:
+        fresh.message = "Game reset. " + fresh.message
+    return fresh
 
 
 def _prompt(text: str) -> str:
@@ -203,6 +302,7 @@ def run_play(settings: Settings, grabber: FrameGrabber, auto_start: bool = False
             return 1
 
     services = Services(settings)
+    opening_book(settings)  # load the book now, not on the first move
     llm = LlmJudge(settings.llm.model, settings.llm.enabled) if settings.llm.enabled else None
     sessions_root = resolve_path(settings.storage.sessions_dir)
 
@@ -215,7 +315,7 @@ def run_play(settings: Settings, grabber: FrameGrabber, auto_start: bool = False
         return s
 
     session = new_session(cal)
-    session.message = "Set up the starting position, then press S."
+    session.message = SETUP_MESSAGE
     cv2.namedWindow(CAMERA_WINDOW, cv2.WINDOW_NORMAL)
     cv2.namedWindow(BOARD_WINDOW, cv2.WINDOW_NORMAL)
     print(f"\nKeys (in a camera window): {KEYS}\n")
@@ -265,7 +365,10 @@ def run_play(settings: Settings, grabber: FrameGrabber, auto_start: bool = False
             elif ch == "e" and session.record:
                 answer = _prompt("Result? w = white won, b = black won, d = draw, u = unknown: ").strip().lower()
                 session.end({"w": "white", "b": "black", "d": "draw"}.get(answer[:1], "unknown"))
-            elif ch == "r" and session.record:
+            elif ch == "r":
+                session = reset_game(session, frame, new_session)
+                cache.clear()
+            elif ch == "g" and session.record:
                 answer = _prompt("Who resigned? w / b: ").strip().lower()
                 if answer[:1] in ("w", "b"):
                     session.end("black" if answer[:1] == "w" else "white")
@@ -276,7 +379,7 @@ def run_play(settings: Settings, grabber: FrameGrabber, auto_start: bool = False
             elif ch == "n" and session.phase == Phase.ENDED:
                 session.close()
                 session = new_session(session.cal)
-                session.message = "Set up the starting position, then press S."
+                session.message = SETUP_MESSAGE
     finally:
         if session.record and session.phase not in (Phase.ENDED, Phase.WAIT_START) and session.moves:
             session.end("unknown")
