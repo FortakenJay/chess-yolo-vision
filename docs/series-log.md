@@ -2,7 +2,7 @@
 
 A Freenove ESP32-WROVER with an OV2640 watches a roll-up vinyl set from about 75° overhead. That module brings up its own open Wi-Fi, `ChessCam`, and sits at `192.168.4.1`. Frames arrive around one per second, 800×600, dim and green. The PC records the game, asks Stockfish for an evaluation, and writes a PGN. Which ply was played comes from the pictures and the rules.
 
-Dates on the commits are 2026-10-16 and 2026-10-17. Author on each one: jih bin luo liu. Remote: `https://github.com/FortakenJay/chess-yolo-vision.git`, branch `main`. Everything below is on GitHub, pushed 2026-10-21; the fix commit of each episode is tagged `ep-3` … `ep-9`.
+Dates on the commits are 2026-10-16 and 2026-10-17. Author on each one: jih bin luo liu. Remote: `https://github.com/FortakenJay/chess-yolo-vision.git`, branch `main`. Everything below is on GitHub, pushed 2026-10-21; the fix commit of each episode is tagged `ep-3` … `ep-10`.
 
 | Commit | Tag | What the afternoon showed |
 |---|---|---|
@@ -17,6 +17,7 @@ Dates on the commits are 2026-10-16 and 2026-10-17. Author on each one: jih bin 
 | `615119e` | `ep-8` | Shaded empties, a pawn stood back up |
 | `ec98211` | `ep-9` | A stray Ke7, an R that resigned, an opening book |
 | `85bafe7` |  | Replays that behave like the person at the board |
+| `5d7e5cf` | `ep-10` | Standard tooling and a cleanup that changes nothing on the board |
 
 Live play writes every JPEG under `sessions/<date>_<time>/`. `run.py replay` feeds those JPEGs through the same `session.py` live play uses. The number that decides a fix is **wrong accepts**: a continuation taken with no question that was not the one played. Zero is the target. Replay exits 2 otherwise. Each regression test is written so the code from the day before fails it.
 
@@ -216,7 +217,7 @@ The reset and arrows, and the book, were written by two subagents at the same ti
 
 ## 10. Nothing moves on the vinyl
 
-The cleanup commit after `ep-9`. No new reading behaviour; the episode is about whether the code can be trusted to stay that way.
+`5d7e5cf`, tag `ep-10`. No new reading behaviour; the episode is about whether the code can be trusted to stay that way.
 
 The tools first, since no Python equivalent of a React doctor exists as a skill: **ruff** (lint and format), **mypy** (types), **vulture** (dead code), **radon** (complexity), wired into `pyproject.toml` and a `pre-commit` config that runs the venv's own copies. The first survey: 772 ruff findings (593 of them long lines), 25 of 30 files off-format, 69 type errors, a handful of dead functions, and four functions past any sane complexity: `run_play` at 47 branches, `run_replay`, `render_board`, `GameSession.process`.
 
@@ -257,8 +258,9 @@ Every episode is one commit, and the session that exposed the fault is on disk. 
 | 7 | `ep-7` | `ef2d7ac` | `a1a87ba` | `20261017_104913` | Sleeve over h1 read as Rg1 and Kh1; after, a question while the sleeve is there |
 | 8 | `ep-8` | `a1a87ba` | `615119e` | `20261017_111040` | Pawn stood up asks `b4 b3 h3`, dots on a5/a6; after, nothing asked, no stray dots |
 | 9 | `ep-9` | `615119e` | `ec98211` | `20261017_112825` | Arrows and the R key are live-only; film them with `run.py play` |
+| 10 | `ep-10` | `3c0aa6e` | `5d7e5cf` | any | Nothing may change: replay a session at both and `diff` the output; run `ruff check .` and `mypy` at both |
 
-Each fix commit carries a tag, `ep-3` … `ep-9`, so an episode can be checked out by name; `ep-4^` is the code just before it.
+Each fix commit carries a tag, `ep-3` … `ep-10`, so an episode can be checked out by name; `ep-4^` is the code just before it.
 
 ```bash
 git switch --detach ep-4^             # the code just before episode 4
