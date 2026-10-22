@@ -50,7 +50,7 @@ class BoardCamera:
     top_radius: float = TOP_RADIUS
 
     @classmethod
-    def from_calibration(cls, cal: Calibration, height_scale: float = 1.0, focal: float | None = None) -> "BoardCamera":
+    def from_calibration(cls, cal: Calibration, height_scale: float = 1.0, focal: float | None = None) -> BoardCamera:
         w, h = cal.frame_size
         cx, cy = w / 2.0, h / 2.0
         # board (square units) -> image homography
@@ -71,13 +71,18 @@ class BoardCamera:
             raise ValueError("solvePnP failed for the board pose")
         heights = {p: v * height_scale for p, v in DEFAULT_HEIGHTS.items()}
         cam = cls(k, rvec, tvec, (w, h), heights)
-        logger.info("Board camera: focal %.0f px, camera %.1f squares from board center, %.0f deg elevation",
-                    f, cam.distance_to_center(), cam.elevation_deg())
+        logger.info(
+            "Board camera: focal %.0f px, camera %.1f squares from board center, %.0f deg elevation",
+            f,
+            cam.distance_to_center(),
+            cam.elevation_deg(),
+        )
         return cam
 
     def project(self, points: np.ndarray) -> np.ndarray:
-        pts, _ = cv2.projectPoints(np.asarray(points, np.float64).reshape(-1, 3), self.rvec, self.tvec,
-                                   self.camera_matrix, None)
+        pts, _ = cv2.projectPoints(
+            np.asarray(points, np.float64).reshape(-1, 3), self.rvec, self.tvec, self.camera_matrix, None
+        )
         return pts.reshape(-1, 2)
 
     def depth(self, x: float, y: float, z: float = 0.0) -> float:
@@ -106,9 +111,6 @@ class BoardCamera:
         pts = self.project(np.vstack([base, top])).astype(np.float32)
         return cv2.convexHull(pts).reshape(-1, 2)
 
-    def board_polygon(self) -> np.ndarray:
-        return self.project(np.array([[0, 0, 0], [8, 0, 0], [8, 8, 0], [0, 8, 0]], np.float64))
-
     def roi(self, margin: int = 8) -> tuple[int, int, int, int]:
         """Image box (x0, y0, x1, y1) covering the board and the tallest pieces on it."""
         corners = [[x, y, z] for x in (0, 8) for y in (0, 8) for z in (0, -max(self.heights.values()) - 0.2)]
@@ -118,8 +120,9 @@ class BoardCamera:
         x1, y1 = np.ceil(pts.max(0)).astype(int) + margin
         return max(0, x0), max(0, y0), min(w, x1), min(h, y1)
 
-    def render_labels(self, board: chess.Board, scale: float = 1.0,
-                      roi: tuple[int, int, int, int] | None = None) -> np.ndarray:
+    def render_labels(
+        self, board: chess.Board, scale: float = 1.0, roi: tuple[int, int, int, int] | None = None
+    ) -> np.ndarray:
         """Label image: 0 = no piece, else 1 + square * 12 + piece index (nearest piece wins).
 
         With roi=(x0, y0, x1, y1) the image covers only that box, at the given scale.
@@ -145,8 +148,9 @@ class BoardCamera:
         return self._sil_cache[key]
 
 
-def orient_from_start(cal: Calibration, frame: np.ndarray, height_scale: float = 1.0,
-                      board: chess.Board | None = None) -> tuple[Calibration, BoardCamera, float]:
+def orient_from_start(
+    cal: Calibration, frame: np.ndarray, height_scale: float = 1.0, board: chess.Board | None = None
+) -> tuple[Calibration, BoardCamera, float]:
     """Turn the calibration so white (rank 1) is at the bottom of the top-down view.
 
     Tries all four quarter turns with the given position (default: the starting position)

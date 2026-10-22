@@ -5,12 +5,12 @@ import pytest
 from chessreader.calibration import (
     Calibration,
     CalibrationError,
+    _handedness,
     calibration_from_outer_corners,
     canonical_grid,
     detect_board,
     load_reference,
     order_corners,
-    _handedness,
 )
 
 SQ = 60
@@ -28,7 +28,7 @@ def render_board() -> tuple[np.ndarray, np.ndarray]:
     for r in range(8):
         for c in range(8):
             color = 225 if (r + c) % 2 == 0 else 35
-            img[MARGIN + r * SQ:MARGIN + (r + 1) * SQ, MARGIN + c * SQ:MARGIN + (c + 1) * SQ] = color
+            img[MARGIN + r * SQ : MARGIN + (r + 1) * SQ, MARGIN + c * SQ : MARGIN + (c + 1) * SQ] = color
     lo, hi = MARGIN, MARGIN + 8 * SQ
     outer = np.array([[lo, lo], [hi, lo], [hi, hi], [lo, hi]], dtype=np.float32)
     return cv2.cvtColor(img, cv2.COLOR_GRAY2BGR), outer

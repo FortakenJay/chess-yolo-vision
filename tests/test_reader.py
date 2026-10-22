@@ -11,11 +11,11 @@ SIZE = 200
 def frame_with(patch: np.ndarray | None = None, shift: int = 0) -> np.ndarray:
     """A gray scene with a dark square edge down the middle and an optional patch at the center."""
     img = np.full((SIZE, SIZE, 3), 220, np.uint8)
-    img[:, SIZE // 2 + shift:] = 75  # dark square
+    img[:, SIZE // 2 + shift :] = 75  # dark square
     if patch is not None:
         h, w = patch.shape[:2]
         y, x = SIZE // 2 - h // 2, 3 * SIZE // 4 - w // 2
-        img[y:y + h, x:x + w] = patch
+        img[y : y + h, x : x + w] = patch
     return img
 
 
@@ -25,8 +25,8 @@ def black_piece_on_dark(size: int = 40) -> np.ndarray:
     r = np.hypot(yy, xx)
     piece = np.full((size, size), 75.0)
     piece[r < size / 2 - 2] = 68.0
-    piece[(r > size / 2 - 6) & (r < size / 2 - 3)] = 100.0   # rim catching the light
-    piece[r < 4] = 105.0                                       # top highlight
+    piece[(r > size / 2 - 6) & (r < size / 2 - 3)] = 100.0  # rim catching the light
+    piece[r < 4] = 105.0  # top highlight
     return np.repeat(np.clip(piece, 0, 255).astype(np.uint8)[..., None], 3, axis=2)
 
 

@@ -9,12 +9,14 @@ reaches a book position by another move order is recognised.
 from __future__ import annotations
 
 import csv
+import functools
 import logging
-import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import chess
+
+from .settings import OpeningsSettings, resolve_path
 
 logger = logging.getLogger(__name__)
 
@@ -24,9 +26,9 @@ _STARTING_EPD = chess.Board().epd()
 
 @dataclass
 class OpeningInfo:
-    eco: str | None          # ECO of the deepest named position the game has reached so far
-    name: str | None         # its name
-    in_book: bool            # the current position is a known book position
+    eco: str | None  # ECO of the deepest named position the game has reached so far
+    name: str | None  # its name
+    in_book: bool  # the current position is a known book position
     book_moves: list[chess.Move] = field(default_factory=list)  # theory continuations, most mainline first
     left_book_ply: int | None = None  # ply (1-based) of the move that left the book; None while in book
 
@@ -38,12 +40,12 @@ def _parse_line(pgn: str) -> list[str]:
 
 class OpeningBook:
     def __init__(self) -> None:
-        self._names: dict[str, tuple[str, str]] = {}   # epd -> (eco, name)
-        self._weight: dict[str, int] = {}               # epd -> number of book lines through it
+        self._names: dict[str, tuple[str, str]] = {}  # epd -> (eco, name)
+        self._weight: dict[str, int] = {}  # epd -> number of book lines through it
         self.lines = 0
 
     @classmethod
-    def load(cls, path: str | Path | None = None) -> "OpeningBook":
+    def load(cls, path: str | Path | None = None) -> OpeningBook:
         book = cls()
         path = Path(path) if path is not None else DEFAULT_BOOK
         with path.open(encoding="utf-8", newline="") as fh:
@@ -71,13 +73,6 @@ class OpeningBook:
     @property
     def positions(self) -> int:
         return len(self._weight)
-
-    def is_book(self, board: chess.Board) -> bool:
-        return board.epd() in self._weight
-
-    def name_of(self, board: chess.Board) -> tuple[str, str] | None:
-        """(eco, name) if this exact position is a named book position."""
-        return self._names.get(board.epd())
 
     def _book_moves(self, board: chess.Board) -> list[chess.Move]:
         scored = []
@@ -109,39 +104,38 @@ class OpeningBook:
             elif left_book_ply is None:
                 left_book_ply = ply
         in_book = left_book_ply is None
-        return OpeningInfo(eco=eco, name=name, in_book=in_book,
-                           book_moves=self._book_moves(replay), left_book_ply=left_book_ply)
+        return OpeningInfo(
+            eco=eco, name=name, in_book=in_book, book_moves=self._book_moves(replay), left_book_ply=left_book_ply
+        )
 
     def book_san(self, board: chess.Board, limit: int = 3) -> list[str]:
         """SAN of up to `limit` book moves from the current position (empty for a custom start)."""
         if board.root().epd() != _STARTING_EPD:
             return []
-        return [board.san(m) for m in self._book_moves(board.copy(stack=False))[:max(0, limit)]]
+        return [board.san(m) for m in self._book_moves(board.copy(stack=False))[: max(0, limit)]]
 
 
-_default: OpeningBook | None = None
-_default_lock = threading.Lock()
-
-
+@functools.cache
 def default_book() -> OpeningBook:
     """The bundled book, loaded once per process. Raises if the file is missing or broken."""
-    global _default
-    if _default is None:
-        with _default_lock:
-            if _default is None:
-                _default = OpeningBook.load()
-    return _default
+    return OpeningBook.load()
 
 
-_loaded: dict[str, OpeningBook] = {}
+@functools.cache
+def load_book(path: str = "") -> OpeningBook | None:
+    """The book at `path` ("" = the bundled one), loaded once; None, warned once, if it can't be read.
+
+    The Board window and the PGN tags both use this, so a broken book only switches openings off.
+    """
+    try:
+        return OpeningBook.load(path) if path else default_book()
+    except Exception as exc:
+        logger.warning("Opening book not loaded (%s); no opening names or ECO/Opening tags", exc)
+        return None
 
 
-def book_from(path: str | Path | None = None) -> OpeningBook:
-    """The book at `path` (loaded once per path), or the bundled one when no path is given."""
-    if not path:
-        return default_book()
-    key = str(Path(path).resolve())
-    with _default_lock:
-        if key not in _loaded:
-            _loaded[key] = OpeningBook.load(key)
-        return _loaded[key]
+def book_for(settings: OpeningsSettings) -> OpeningBook | None:
+    """The book `openings` in config.yaml asks for, or None when openings are off or it can't be read."""
+    if not settings.enabled:
+        return None
+    return load_book(str(resolve_path(settings.book)) if settings.book else "")

@@ -214,11 +214,29 @@ The reset and arrows, and the book, were written by two subagents at the same ti
 
 ---
 
+## 10. Nothing moves on the vinyl
+
+The cleanup commit after `ep-9`. No new reading behaviour; the episode is about whether the code can be trusted to stay that way.
+
+The tools first, since no Python equivalent of a React doctor exists as a skill: **ruff** (lint and format), **mypy** (types), **vulture** (dead code), **radon** (complexity), wired into `pyproject.toml` and a `pre-commit` config that runs the venv's own copies. The first survey: 772 ruff findings (593 of them long lines), 25 of 30 files off-format, 69 type errors, a handful of dead functions, and four functions past any sane complexity: `run_play` at 47 branches, `run_replay`, `render_board`, `GameSession.process`.
+
+Before touching anything, a baseline: every one of the 12 recorded sessions replayed and saved, and the frame-by-frame checker that had judged every fix so far moved into the repo as `tools/eval_sessions.py`, with the truth for five games in `tools/session_timelines.json`.
+
+Then the changes. `run_play` became `LiveGame`, one small method per key. `GameSession` grew a `Pipeline` (camera model, matcher, change reader, motion gate) built and rebuilt as one piece, and its per-frame work split into a handler per phase. Recording moved into `SessionRecorder`, which appends a row and closes the file each time. Most of the 69 type errors were one root cause: everything built at game start was `None` before it.
+
+One slip worth showing. A script written to delete the dead functions computed the indentation of a method as zero and deleted from each one to the end of its class: `MotionGate.update`, `BoardCamera.render_labels`, `GameRecord.add_move`, the book's `lookup`. 22 tests failed at once. The four files were rebuilt from git plus the intended edits, and an AST comparison of every module against the last commit confirmed that only the dead names were gone.
+
+Then Claude Code's `/simplify`: four review agents at once, one each for reuse, simplification, efficiency and altitude. They found the opening book cached in four stacked layers, the session file format read in three places, a no-op `close()` still called five times, an engine listener added on every reset and never removed (each old game kept alive in memory), `None` fallbacks that disagreed with each other, and an evaluator that decoded 3.3 GB of frames before processing the first. All fixed, except grouping the in-game state into one `Game` object, which is the next structural step.
+
+The test of all of it: after every stage, the 12 sessions replayed **byte-identically** to the baseline and `eval_sessions.py` still reported 0 wrong frames in all five games. ruff, the formatter, mypy and vulture end clean; 51 tests. A test for the live key loop came out of a near-miss during review: binding **X** directly to the first session's method would have left it pointing at a game that **R** had replaced.
+
+---
+
 ## How a fix gets believed
 
 Take the `sessions/` folder from the hour it broke. Replay it. Count settled frames whose recorded position disagrees with the vinyl, and count accepts that disagree with the ply that was played. A PGN cannot describe a takeback, so those sessions are scored by the final position plus the `Move N` and `was taken back` lines, frame by frame, on every picture where the vinyl had gone quiet.
 
-New drawings live in `tests/scene.py`: a low side view, and a near-overhead view with a textured table, darker squares, fainter rims. Noise and exposure wander are added. `tests/test_reader.py`, `tests/test_matcher.py`, `tests/test_replay.py`, `tests/test_engine.py`, `tests/test_openings.py`, and `tests/test_display.py` hold the cases above. Threshold edits are replayed against the recorded sessions before they are trusted. Forty-eight tests, no camera required.
+New drawings live in `tests/scene.py`: a low side view, and a near-overhead view with a textured table, darker squares, fainter rims. Noise and exposure wander are added. `tests/test_reader.py`, `tests/test_matcher.py`, `tests/test_replay.py`, `tests/test_engine.py`, `tests/test_openings.py`, `tests/test_display.py`, and `tests/test_play.py` hold the cases above. Threshold edits are replayed against the recorded sessions before they are trusted. Fifty-one tests, no camera required. `tools/eval_sessions.py` scores the recorded games frame by frame.
 
 One row in `docs/testing.md` is still open. The 16-ply test game (`tests/data/test_game.pgn`, through 8.Nc3 O-O) has a synthetic replay at 16/16. The same game recorded on this vinyl and replayed against that PGN is marked pending.
 

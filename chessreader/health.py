@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class SyncReport:
-    mismatches: list[str] = field(default_factory=list)   # e.g. "e4: board says empty, camera sees white"
+    mismatches: list[str] = field(default_factory=list)  # e.g. "e4: board says empty, camera sees white"
     checked: int = 0
 
     @property
@@ -53,7 +53,7 @@ class SyncMonitor:
 
     def update(self, report: SyncReport) -> list[str]:
         squares = {m.split(":")[0] for m in report.mismatches}
-        self._history = (self._history + [squares])[-self.persist:]
+        self._history = [*self._history, squares][-self.persist :]
         if len(self._history) < self.persist:
             return []
         persistent = set.intersection(*self._history)
@@ -71,8 +71,15 @@ class DriftMonitor:
     a little of that; a bumped board or camera changes nearly all of it.
     """
 
-    def __init__(self, reference_edges: np.ndarray, canny_low: int, canny_high: int,
-                 tolerance_px: int = 4, threshold: float = 0.45, persist: int = 3) -> None:
+    def __init__(
+        self,
+        reference_edges: np.ndarray,
+        canny_low: int,
+        canny_high: int,
+        tolerance_px: int = 4,
+        threshold: float = 0.45,
+        persist: int = 3,
+    ) -> None:
         self.ref = reference_edges > 0
         self.canny = (canny_low, canny_high)
         self.tolerance = tolerance_px

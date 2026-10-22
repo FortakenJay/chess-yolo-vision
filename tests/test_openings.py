@@ -8,8 +8,7 @@ import chess
 import chess.pgn
 import pytest
 
-from chessreader import storage
-from chessreader.openings import DEFAULT_BOOK, OpeningBook, default_book
+from chessreader.openings import DEFAULT_BOOK, OpeningBook, default_book, load_book
 from chessreader.storage import GameRecord
 
 
@@ -35,7 +34,7 @@ def test_every_line_is_legal_and_well_formed():
         game = chess.pgn.read_game(io.StringIO(row["pgn"]))
         assert game is not None and not game.errors, row
         moves = list(game.mainline_moves())
-        assert 1 <= len(moves), row
+        assert len(moves) >= 1, row
         board = chess.Board()
         for move in moves:
             assert board.is_legal(move), row
@@ -45,9 +44,17 @@ def test_every_line_is_legal_and_well_formed():
 
 
 def test_first_moves_have_names(book):
-    for moves, name in [("e4", "King's Pawn Game"), ("d4", "Queen's Pawn Game"), ("c4", "English Opening"),
-                        ("Nf3", "Zukertort Opening"), ("e4 e5", "King's Pawn Game"), ("e4 c5", "Sicilian Defense"),
-                        ("e4 e6", "French Defense"), ("e4 c6", "Caro-Kann Defense"), ("d4 d5 c4", "Queen's Gambit")]:
+    for moves, name in [
+        ("e4", "King's Pawn Game"),
+        ("d4", "Queen's Pawn Game"),
+        ("c4", "English Opening"),
+        ("Nf3", "Zukertort Opening"),
+        ("e4 e5", "King's Pawn Game"),
+        ("e4 c5", "Sicilian Defense"),
+        ("e4 e6", "French Defense"),
+        ("e4 c6", "Caro-Kann Defense"),
+        ("d4 d5 c4", "Queen's Gambit"),
+    ]:
         info = book.lookup(board_after(moves))
         assert info.name == name, moves
         assert info.in_book and info.left_book_ply is None
@@ -128,7 +135,7 @@ def headers_of(record: GameRecord) -> chess.pgn.Headers:
 def test_pgn_gets_eco_and_opening_tags(tmp_path):
     record = GameRecord(tmp_path)
     assert "Opening" not in headers_of(record)
-    for san in "e4 e5 Nf3 Nc6 Bb5".split():
+    for san in ["e4", "e5", "Nf3", "Nc6", "Bb5"]:
         record.add_move(record.board.parse_san(san), tier=1, margin=1.0)
     h = headers_of(record)
     assert h["ECO"] == "C60" and h["Opening"] == "Ruy Lopez"
@@ -144,15 +151,14 @@ def test_pgn_gets_eco_and_opening_tags(tmp_path):
 
 
 def test_pgn_still_saves_without_a_book(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "_book", None)
-    monkeypatch.setattr(storage, "_book_failed", False)
-
     def broken():
         raise OSError("no book")
 
     monkeypatch.setattr("chessreader.openings.default_book", broken)
+    load_book.cache_clear()  # forget the book loaded by earlier tests
     record = GameRecord(tmp_path)
     record.add_move(chess.Move.from_uci("e2e4"), tier=1, margin=1.0)
     h = headers_of(record)
     assert "Opening" not in h and record.pgn().strip().endswith("*")
     assert "1. e4" in record.path.read_text(encoding="utf-8")
+    load_book.cache_clear()  # later tests get the real book again

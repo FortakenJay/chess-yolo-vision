@@ -20,9 +20,9 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Shift:
-    matrix: np.ndarray   # 3x3, previous image -> current image
+    matrix: np.ndarray  # 3x3, previous image -> current image
     inliers: int
-    moved_px: float      # mean displacement of the board corners
+    moved_px: float  # mean displacement of the board corners
 
 
 def board_mask(shape: tuple[int, int], corners: np.ndarray, margin: float = 0.15) -> np.ndarray:
@@ -36,9 +36,10 @@ def board_mask(shape: tuple[int, int], corners: np.ndarray, margin: float = 0.15
 
 
 class CameraTracker:
-    def __init__(self, n_features: int = 3000, ratio: float = 0.75, min_inliers: int = 40,
-                 ransac_px: float = 3.0) -> None:
-        self.orb = cv2.ORB_create(n_features)
+    def __init__(
+        self, n_features: int = 3000, ratio: float = 0.75, min_inliers: int = 40, ransac_px: float = 3.0
+    ) -> None:
+        self.orb = cv2.ORB.create(n_features)
         self.matcher = cv2.BFMatcher(cv2.NORM_HAMMING)
         self.ratio = ratio
         self.min_inliers = min_inliers
@@ -54,14 +55,19 @@ class CameraTracker:
         k1, d1 = self.orb.detectAndCompute(g1, None)
         if d0 is None or d1 is None or len(k0) < self.min_inliers or len(k1) < self.min_inliers:
             return None
-        good = [m for m, n in (p for p in self.matcher.knnMatch(d0, d1, k=2) if len(p) == 2)
-                if m.distance < self.ratio * n.distance]
+        good = [
+            m
+            for m, n in (p for p in self.matcher.knnMatch(d0, d1, k=2) if len(p) == 2)
+            if m.distance < self.ratio * n.distance
+        ]
         if len(good) < self.min_inliers:
             logger.debug("camera tracking: only %d distinctive matches", len(good))
             return None
-        src = np.float32([k0[m.queryIdx].pt for m in good])
-        dst = np.float32([k1[m.trainIdx].pt for m in good])
-        matrix, inlier_mask = cv2.findHomography(src, dst, cv2.RANSAC, self.ransac_px)
+        src = np.array([k0[m.queryIdx].pt for m in good], np.float32)
+        dst = np.array([k1[m.trainIdx].pt for m in good], np.float32)
+        found = cv2.findHomography(src, dst, cv2.RANSAC, self.ransac_px)
+        matrix: np.ndarray | None = found[0]  # None when RANSAC finds no model
+        inlier_mask = found[1]
         if matrix is None:
             return None
         inliers = int(inlier_mask.sum())

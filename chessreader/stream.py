@@ -12,8 +12,8 @@ import os
 import socket
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 import cv2
 import numpy as np
@@ -46,7 +46,7 @@ FRAMESIZES: dict[str, tuple[int, tuple[int, int]]] = {
 }
 
 
-class CameraUnreachable(RuntimeError):
+class CameraUnreachableError(RuntimeError):
     """The ESP32 can't be reached from this PC."""
 
 
@@ -63,17 +63,17 @@ def bypass_proxy(host: str) -> None:
         current = os.environ.get(var, "")
         hosts = [h for h in current.split(",") if h]
         if host not in hosts:
-            os.environ[var] = ",".join(hosts + [host])
+            os.environ[var] = ",".join([*hosts, host])
 
 
 def check_camera_network(host: str, port: int, timeout: float) -> None:
-    """Raise CameraUnreachable with a hint about which network is wrong."""
+    """Raise CameraUnreachableError with a hint about which network is wrong."""
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
             probe.connect((host, port))
             local_ip = probe.getsockname()[0]
     except OSError as exc:
-        raise CameraUnreachable(f"No route to {host}: {exc}. Is Wi-Fi connected to ChessCam?") from exc
+        raise CameraUnreachableError(f"No route to {host}: {exc}. Is Wi-Fi connected to ChessCam?") from exc
 
     try:
         with socket.create_connection((host, port), timeout=timeout):
@@ -84,7 +84,7 @@ def check_camera_network(host: str, port: int, timeout: float) -> None:
             hint = f"This PC's address on that route is {local_ip}, not on the camera network. {hint}"
         else:
             hint = f"PC is on the camera network ({local_ip}) but the ESP32 isn't answering. Check its serial log."
-        raise CameraUnreachable(f"Can't reach ESP32 at {host}:{port} ({exc}). {hint}") from exc
+        raise CameraUnreachableError(f"Can't reach ESP32 at {host}:{port} ({exc}). {hint}") from exc
 
 
 class CameraControl:
@@ -101,9 +101,10 @@ class CameraControl:
         return resp.json()
 
     def set(self, var: str, val: int) -> None:
+        params: dict[str, str | int] = {"var": var, "val": int(val)}
         resp = self.session.get(
             f"{self.cam.base_url}/control",
-            params={"var": var, "val": int(val)},
+            params=params,
             timeout=self.cam.connect_timeout_s,
         )
         if resp.status_code != 200:
@@ -140,7 +141,11 @@ class CameraControl:
         logger.warning(
             "Asked for %s (code %d, %dx%d) but camera reports framesize=%s and sends %dx%d. "
             "The firmware's esp32-camera version may number framesizes differently.",
-            self.cam.framesize, code, *expected, reported, *size,
+            self.cam.framesize,
+            code,
+            *expected,
+            reported,
+            *size,
         )
         return size
 
@@ -181,7 +186,7 @@ class FrameGrabber:
         self._last_warning = ("", 0.0)
 
     @classmethod
-    def for_camera(cls, cam: CameraSettings) -> "FrameGrabber":
+    def for_camera(cls, cam: CameraSettings) -> FrameGrabber:
         return cls(
             cam.stream_url if cam.source == "stream" else cam.capture_url,
             open_timeout_s=cam.connect_timeout_s,
@@ -200,7 +205,7 @@ class FrameGrabber:
     def connected(self) -> bool:
         return self._connected
 
-    def start(self) -> "FrameGrabber":
+    def start(self) -> FrameGrabber:
         if self._thread is None:
             self._stop.clear()
             self._thread = threading.Thread(target=self._run, name="FrameGrabber", daemon=True)
@@ -262,8 +267,8 @@ class FrameGrabber:
                     if end < 0:
                         del buf[:start]
                         break
-                    jpeg = bytes(buf[start:end + 2])
-                    del buf[:end + 2]
+                    jpeg = bytes(buf[start : end + 2])
+                    del buf[: end + 2]
                     image = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
                     if image is None:
                         continue
@@ -305,8 +310,10 @@ class FrameGrabber:
 
     def _open(self) -> cv2.VideoCapture:
         params = [
-            cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, self.open_timeout_ms,
-            cv2.CAP_PROP_READ_TIMEOUT_MSEC, self.read_timeout_ms,
+            cv2.CAP_PROP_OPEN_TIMEOUT_MSEC,
+            self.open_timeout_ms,
+            cv2.CAP_PROP_READ_TIMEOUT_MSEC,
+            self.read_timeout_ms,
         ]
         cap = cv2.VideoCapture(self.source, cv2.CAP_FFMPEG, params)
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
@@ -327,7 +334,7 @@ class FrameGrabber:
             if self.reachability is not None:
                 try:
                     self.reachability()
-                except CameraUnreachable as exc:
+                except CameraUnreachableError as exc:
                     self._warn(str(exc))
                     self._stop.wait(backoff)
                     backoff = min(backoff * 2, self.backoff_max_s)
@@ -341,8 +348,10 @@ class FrameGrabber:
                         self._read_snapshots()
                     backoff = self.backoff_s
                 except Exception as exc:
-                    self._warn(f"Stream {self.source} failed ({type(exc).__name__}: {exc}). "
-                               "Is a browser tab already viewing it? Reconnecting.")
+                    self._warn(
+                        f"Stream {self.source} failed ({type(exc).__name__}: {exc}). "
+                        "Is a browser tab already viewing it? Reconnecting."
+                    )
                     self._stop.wait(backoff)
                     backoff = min(backoff * 2, self.backoff_max_s)
                 finally:

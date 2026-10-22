@@ -10,7 +10,7 @@
 .venv/bin/python -m pytest tests -q          # macOS / Linux
 ```
 
-No camera needed. 48 tests:
+No camera needed. 51 tests:
 
 | File | Covers |
 |---|---|
@@ -21,6 +21,7 @@ No camera needed. 48 tests:
 | `tests/test_replay.py` | Whole games recorded as sessions and replayed end to end: a 16-move game (a "hand" between moves, ~1 fps, exposure drift), impatient players, the camera bumped three times mid-game, moves taken back by hand, a dark board where the start calibration must be chosen, a hand resting beside a corner, a sleeve beside rank 8, a sleeve lying over h1, the Board window's dots refreshing every move, and a knocked-over pawn stood back up (no question, the next move still read) |
 | `tests/test_engine.py` | Stockfish found from `engine.path`, else from `PATH` when the configured path is from another computer |
 | `tests/test_openings.py` | Every book line is legal and well-formed (A00–E99), first moves are named, known lookups (Ruy Lopez, Berlin, King's Indian, Grünfeld, Najdorf, Giuoco Piano, Nimzo), transpositions (Semi-Slav three ways, English Two Knights), leaving the book keeps the name, PGN `ECO`/`Opening` tags after moves and undo |
+| `tests/test_play.py` | The live loop (`LiveGame`) with a fake camera and scripted keys: S, R, Q; keys that don't apply in a phase do nothing; after R a key acts on the new game |
 | `tests/test_display.py` | The Board window renders with and without a question, badges sharing a square don't overlap, and **R** keeps the old PGN as unfinished, waits for S with pieces off, starts at once from the start position, works mid-question |
 
 The camera scenes come from `tests/scene.py`: it draws a board and pieces through the same camera
@@ -58,6 +59,19 @@ auto-accept rate 100% | wrong accepts 0 | tiers {1: 1, 2: 0, 3: 0, 4: 0} | read 
 
 Use this after changing any threshold: replay the recorded games and check that wrong accepts stay
 at 0.
+
+## Frame-by-frame evaluation of the recorded games
+
+```bash
+.venv/bin/python tools/eval_sessions.py                 # all games with a truth timeline
+.venv/bin/python tools/eval_sessions.py 20261017_104913 -v
+```
+
+`tools/session_timelines.json` says what was really on the board for each stretch of frames of five
+recorded games (takebacks included). The tool plays each session through the live code like a
+player who answers a question only when the right move is offered, and counts still frames where the
+program's position is wrong. Current result: **0 wrong** in all five (290, 298, 627, 878 and 83 still
+frames). See [development.md](development.md#verifying-a-change-to-the-reader).
 
 A PGN can't describe moves taken back by hand, so for games with takebacks compare the final board
 and the log instead: each `Move N: ...` line and each `was taken back` line. The figures below were

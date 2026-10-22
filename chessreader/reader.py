@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import cv2
 import numpy as np
@@ -24,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Prepared:
-    lab: np.ndarray      # float32 Lab of the region of interest, downscaled and blurred
+    lab: np.ndarray  # float32 Lab of the region of interest, downscaled and blurred
     texture: np.ndarray  # float32 local contrast (std of brightness) at the same scale
 
 
@@ -42,9 +43,18 @@ def local_contrast(gray: np.ndarray, window: int) -> np.ndarray:
 
 
 class ChangeReader:
-    def __init__(self, roi: tuple[int, int, int, int], scale: float = 0.5, blur: int = 5,
-                 t_low: float = 10.0, t_high: float = 28.0, chroma_weight: float = 1.5,
-                 texture_weight: float = 5.0, texture_window: int = 7, texture_tolerance: int = 5) -> None:
+    def __init__(
+        self,
+        roi: tuple[int, int, int, int],
+        scale: float = 0.5,
+        blur: int = 5,
+        t_low: float = 10.0,
+        t_high: float = 28.0,
+        chroma_weight: float = 1.5,
+        texture_weight: float = 5.0,
+        texture_window: int = 7,
+        texture_tolerance: int = 5,
+    ) -> None:
         self.roi = roi
         self.scale = scale
         self.blur = blur | 1
@@ -86,7 +96,9 @@ class ChangeReader:
             clipped = float(np.clip(gain, 0.7, 1.4))
             if clipped != gain:  # a fit thrown off by a hand or a moved piece: keep its offset and every pixel shifts
                 gain = clipped
-                offset = float(np.median(y[keep] - gain * x[keep])) if keep.sum() >= 50 else float(np.median(y - gain * x))
+                offset = (
+                    float(np.median(y[keep] - gain * x[keep])) if keep.sum() >= 50 else float(np.median(y - gain * x))
+                )
             out[..., c] = gain * ref[..., c] + offset
         return out
 
@@ -149,7 +161,7 @@ class OccupancyReader:
         for r in range(8):
             for c in range(8):
                 cy, cx = (r + 0.5) * sq, (c + 0.5) * sq
-                out[r, c] = np.log(gray[int(cy - half):int(cy + half), int(cx - half):int(cx + half)].std() + 0.5)
+                out[r, c] = np.log(gray[int(cy - half) : int(cy + half), int(cx - half) : int(cx + half)].std() + 0.5)
         return out
 
     def _patches(self, warped: np.ndarray) -> np.ndarray:
@@ -161,7 +173,7 @@ class OccupancyReader:
         for r in range(8):
             for c in range(8):
                 cy, cx = (r + 0.5) * sq, (c + 0.5) * sq
-                out[r, c] = lab[int(cy - half):int(cy + half), int(cx - half):int(cx + half)].reshape(-1, 3).mean(0)
+                out[r, c] = lab[int(cy - half) : int(cy + half), int(cx - half) : int(cx + half)].reshape(-1, 3).mean(0)
         return out
 
     @staticmethod
@@ -204,9 +216,9 @@ class OccupancyReader:
             if len(values) >= 2:
                 arr = np.array(values)
                 self.templates[name] = (arr.mean(0), np.maximum(arr.std(0), self.std_floor))
-        for name, values in tex.items():
-            if len(values) >= 2:
-                self.texture[name] = (float(np.mean(values)), max(float(np.std(values)), 0.3))
+        for name, spreads in tex.items():
+            if len(spreads) >= 2:
+                self.texture[name] = (float(np.mean(spreads)), max(float(np.std(spreads)), 0.3))
         logger.info("Occupancy templates learned: %s", {k: len(v) for k, v in groups.items()})
 
     def contrast(self, piece: str, square: str, chroma_weight: float = 1.5) -> float | None:
@@ -251,7 +263,7 @@ class OccupancyReader:
 
 @dataclass
 class Detection:
-    label: str          # e.g. "white-queen", or "bishop" when the model gives no color
+    label: str  # e.g. "white-queen", or "bishop" when the model gives no color
     confidence: float
     box: tuple[float, float, float, float]  # x1, y1, x2, y2 in image pixels
 
@@ -274,8 +286,11 @@ class PieceDetector:
         logger.info("Piece model %s: %d classes", weights, len(self.names))
 
     def detect(self, image: np.ndarray) -> list[Detection]:
-        result = self.model.predict(image, imgsz=self.imgsz, conf=self.conf, device=self.device, verbose=False)[0]
+        # ultralytics' result types are loose unions; one image in -> one Results with .boxes
+        results: Any = self.model.predict(image, imgsz=self.imgsz, conf=self.conf, device=self.device, verbose=False)
+        result = results[0]
         out = []
-        for cls, conf, box in zip(result.boxes.cls.tolist(), result.boxes.conf.tolist(), result.boxes.xyxy.tolist()):
+        boxes = result.boxes
+        for cls, conf, box in zip(boxes.cls.tolist(), boxes.conf.tolist(), boxes.xyxy.tolist(), strict=True):
             out.append(Detection(self.names[int(cls)], float(conf), tuple(box)))
         return out

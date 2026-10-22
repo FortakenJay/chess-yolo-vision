@@ -42,18 +42,45 @@ def assert_all_correct(results):
 
 
 def test_opening_with_captures_and_castling(setup):
-    moves = "e4 d5 exd5 Qxd5 Nc3 Qa5 d4 c6 Nf3 Bg4 Be2 e6 O-O Nd7 h3 Bh5 Bf4 Ngf6 Qd2 Bb4 a3 Bxc3 Qxc3 Qxc3 bxc3 O-O".split()
+    moves = [
+        "e4",
+        "d5",
+        "exd5",
+        "Qxd5",
+        "Nc3",
+        "Qa5",
+        "d4",
+        "c6",
+        "Nf3",
+        "Bg4",
+        "Be2",
+        "e6",
+        "O-O",
+        "Nd7",
+        "h3",
+        "Bh5",
+        "Bf4",
+        "Ngf6",
+        "Qd2",
+        "Bb4",
+        "a3",
+        "Bxc3",
+        "Qxc3",
+        "Qxc3",
+        "bxc3",
+        "O-O",
+    ]
     assert_all_correct(play_and_match(setup, chess.Board(), moves))
 
 
 def test_queenside_castling(setup):
-    moves = "d4 d5 Nc3 Nc6 Bf4 Bf5 Qd2 Qd7 O-O-O O-O-O".split()
+    moves = ["d4", "d5", "Nc3", "Nc6", "Bf4", "Bf5", "Qd2", "Qd7", "O-O-O", "O-O-O"]
     assert_all_correct(play_and_match(setup, chess.Board(), moves, seed=1))
 
 
 def test_en_passant(setup):
     board = chess.Board()
-    for san in "e4 a6 e5 d5".split():
+    for san in ["e4", "a6", "e5", "d5"]:
         board.push_san(san)
     assert_all_correct(play_and_match(setup, board, ["exd6"], seed=2))
 
@@ -65,7 +92,9 @@ def test_promotion_defaults_to_queen(setup):
     ref = reader.prepare(render(cam, cal, board, rng))
     after = board.copy()
     after.push(chess.Move.from_uci("a7a8q"))
-    result = matcher.match(board, reader.change_probability(ref, reader.prepare(render(cam, cal, after, rng)), matcher.region))
+    result = matcher.match(
+        board, reader.change_probability(ref, reader.prepare(render(cam, cal, after, rng)), matcher.region)
+    )
     assert result.best.move == chess.Move.from_uci("a7a8q")
     assert result.is_promotion
 
@@ -90,7 +119,9 @@ def test_two_moves_between_reads_leave_unexplained_change(setup):
     after = board.copy()
     after.push_san("e4")
     after.push_san("d5")
-    result = matcher.match(board, reader.change_probability(ref, reader.prepare(render(cam, cal, after, rng)), matcher.region))
+    result = matcher.match(
+        board, reader.change_probability(ref, reader.prepare(render(cam, cal, after, rng)), matcher.region)
+    )
     assert result.unexplained > 0.35
 
 
@@ -100,7 +131,7 @@ def test_faint_black_on_dark_move_still_scores(setup):
     With the default change rate that reads as 'nothing happened'; once the board's measured
     black-on-dark contrast is known, the same evidence favours the move, while plain noise still doesn't.
     """
-    cal, cam, _, _ = setup
+    _, cam, _, _ = setup
     roi = cam.roi()
     board = chess.Board()
     board.push_san("e4")

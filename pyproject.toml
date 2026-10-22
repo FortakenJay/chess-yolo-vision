@@ -1,0 +1,106 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chessreader"
+version = "0.9.0"
+description = "Reads a game played on a real chess board through an ESP32 camera, with Stockfish analysis and PGN export"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2",
+    "opencv-python>=4.9",
+    "pydantic>=2",
+    "PyYAML>=6",
+    "chess>=1.10",
+    "python-dotenv>=1",
+    "requests>=2.31",
+    "ultralytics>=8.4",  # YOLO, only for telling what a pawn promoted to
+    "anthropic>=0.40",   # optional tier-3 vision check, off by default
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.15",
+    "mypy>=1.10",
+    "types-PyYAML",
+    "types-requests",
+    "vulture>=2.11",
+    "radon>=6",
+    "pre-commit>=3",
+]
+
+[project.scripts]
+chessreader = "chessreader.main:main"
+
+[tool.setuptools]
+packages = ["chessreader"]
+
+[tool.setuptools.package-data]
+chessreader = ["data/*.tsv"]
+
+# ------------------------------------------------------------------ ruff: lint + format
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["firmware"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # import order
+    "B",        # bugbear
+    "UP",       # pyupgrade
+    "SIM",      # simplify
+    "C4",       # comprehensions
+    "C90",      # complexity
+    "PIE", "RET",
+    "PL",       # pylint
+    "N",        # naming
+    "RUF",
+]
+ignore = [
+    "PLR2004",            # magic values: tuning thresholds are in config.yaml; the rest (8 squares, 255, contrast 25,
+                          # …) are explained in a comment where used. Candidates for settings are tracked in docs
+    "PLR0913", "PLR0917", # many arguments: drawing helpers mirror OpenCV, and the vision classes take each tuning
+                          # knob explicitly so tests can set one without building a whole settings model
+    "PLC0415",            # imports inside functions: keep ultralytics/anthropic/YOLO off the startup path
+    "RUF001", "RUF002", "RUF003",  # ×, –, ° in strings and comments are intended
+    "RUF046",             # int(round(x)): explicit for numpy scalars headed into OpenCV, which wants Python ints
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.ruff.lint.pylint]
+max-branches = 15
+max-statements = 60
+max-returns = 8
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["PLR0915"]
+
+# ------------------------------------------------------------------ mypy
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]  # understands Field(default, gt=...) and model defaults
+packages = ["chessreader"]
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unreachable = true
+
+# ------------------------------------------------------------------ pytest
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+    # python-chess's engine module touches asyncio's event-loop policy, deprecated in 3.14
+    "ignore:.*DefaultEventLoopPolicy.*:DeprecationWarning",
+]

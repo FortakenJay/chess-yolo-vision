@@ -1,0 +1,615 @@
+{
+ "20261017_095558": {
+  "note": "e4, then d5/d6/Nc6/h5 each played and put back by hand",
+  "timeline": [
+   {
+    "first": 0,
+    "last": 38,
+    "moves": []
+   },
+   {
+    "first": 45,
+    "last": 76,
+    "moves": [
+     "e4"
+    ]
+   },
+   {
+    "first": 84,
+    "last": 148,
+    "moves": [
+     "e4",
+     "d5"
+    ]
+   },
+   {
+    "first": 153,
+    "last": 165,
+    "moves": [
+     "e4"
+    ]
+   },
+   {
+    "first": 171,
+    "last": 197,
+    "moves": [
+     "e4",
+     "d6"
+    ]
+   },
+   {
+    "first": 207,
+    "last": 219,
+    "moves": [
+     "e4"
+    ]
+   },
+   {
+    "first": 225,
+    "last": 261,
+    "moves": [
+     "e4",
+     "Nc6"
+    ]
+   },
+   {
+    "first": 273,
+    "last": 282,
+    "moves": [
+     "e4"
+    ]
+   },
+   {
+    "first": 288,
+    "last": 300,
+    "moves": [
+     "e4",
+     "h5"
+    ]
+   },
+   {
+    "first": 309,
+    "last": 456,
+    "moves": [
+     "e4"
+    ]
+   }
+  ]
+ },
+ "20261017_101625": {
+  "note": "1.e4 e5 (black pawn, dark square to dark square)",
+  "timeline": [
+   {
+    "first": 0,
+    "last": 25,
+    "moves": []
+   },
+   {
+    "first": 38,
+    "last": 50,
+    "moves": [
+     "e4"
+    ]
+   },
+   {
+    "first": 59,
+    "last": 485,
+    "moves": [
+     "e4",
+     "e5"
+    ]
+   }
+  ]
+ },
+ "20261017_102849": {
+  "note": "10 plies: e4 e5 (taken back, replayed) Bc4 Nf6 Nf3 d6 Nc3 Be7 O-O c5; a hand rests by h1",
+  "timeline": [
+   {
+    "first": 3,
+    "last": 45,
+    "moves": []
+   },
+   {
+    "first": 60,
+    "last": 75,
+    "moves": [
+     "e4"
+    ]
+   },
+   {
+    "first": 90,
+    "last": 329,
+    "moves": [
+     "e4",
+     "e5"
+    ]
+   },
+   {
+    "first": 344,
+    "last": 358,
+    "moves": [
+     "e4"
+    ]
+   },
+   {
+    "first": 373,
+    "last": 407,
+    "moves": [
+     "e4",
+     "e5"
+    ]
+   },
+   {
+    "first": 422,
+    "last": 441,
+    "moves": [
+     "e4",
+     "e5",
+     "Bc4"
+    ]
+   },
+   {
+    "first": 456,
+    "last": 511,
+    "moves": [
+     "e4",
+     "e5",
+     "Bc4",
+     "Nf6"
+    ]
+   },
+   {
+    "first": 526,
+    "last": 545,
+    "moves": [
+     "e4",
+     "e5",
+     "Bc4",
+     "Nf6",
+     "Nf3"
+    ]
+   },
+   {
+    "first": 560,
+    "last": 581,
+    "moves": [
+     "e4",
+     "e5",
+     "Bc4",
+     "Nf6",
+     "Nf3",
+     "d6"
+    ]
+   },
+   {
+    "first": 596,
+    "last": 637,
+    "moves": [
+     "e4",
+     "e5",
+     "Bc4",
+     "Nf6",
+     "Nf3",
+     "d6",
+     "Nc3"
+    ]
+   },
+   {
+    "first": 652,
+    "last": 672,
+    "moves": [
+     "e4",
+     "e5",
+     "Bc4",
+     "Nf6",
+     "Nf3",
+     "d6",
+     "Nc3",
+     "Be7"
+    ]
+   },
+   {
+    "first": 687,
+    "last": 746,
+    "moves": [
+     "e4",
+     "e5",
+     "Bc4",
+     "Nf6",
+     "Nf3",
+     "d6",
+     "Nc3",
+     "Be7",
+     "O-O"
+    ]
+   },
+   {
+    "first": 761,
+    "last": 973,
+    "moves": [
+     "e4",
+     "e5",
+     "Bc4",
+     "Nf6",
+     "Nf3",
+     "d6",
+     "Nc3",
+     "Be7",
+     "O-O",
+     "c5"
+    ]
+   }
+  ]
+ },
+ "20261017_104913": {
+  "note": "20 plies, Bd3 put back and replayed; a sleeve over h1 at the end (no Kh1)",
+  "timeline": [
+   {
+    "first": 2,
+    "last": 40,
+    "moves": []
+   },
+   {
+    "first": 47,
+    "last": 58,
+    "moves": [
+     "e4"
+    ]
+   },
+   {
+    "first": 64,
+    "last": 85,
+    "moves": [
+     "e4",
+     "e5"
+    ]
+   },
+   {
+    "first": 93,
+    "last": 110,
+    "moves": [
+     "e4",
+     "e5",
+     "Nf3"
+    ]
+   },
+   {
+    "first": 116,
+    "last": 135,
+    "moves": [
+     "e4",
+     "e5",
+     "Nf3",
+     "Qf6"
+    ]
+   },
+   {
+    "first": 150,
+    "last": 184,
+    "moves": [
+     "e4",
+     "e5",
+     "Nf3",
+     "Qf6",
+     "Bd3"
+    ]
+   },
+   {
+    "first": 189,
+    "last": 200,
+    "moves": [
+     "e4",
+     "e5",
+     "Nf3",
+     "Qf6"
+    ]
+   },
+   {
+    "first": 208,
+    "last": 260,
+    "moves": [
+     "e4",
+     "e5",
+     "Nf3",
+     "Qf6",
+     "Bd3"
+    ]
+   },
+   {
+    "first": 267,
+    "last": 320,
+    "moves": [
+     "e4",
+     "e5",
+     "Nf3",
+     "Qf6",
+     "Bd3",
+     "d6"
+    ]
+   },
+   {
+    "first": 330,
+    "last": 380,
+    "moves": [
+     "e4",
+     "e5",
+     "Nf3",
+     "Qf6",
+     "Bd3",
+     "d6",
+     "O-O"
+    ]
+   },
+   {
+    "first": 388,
+    "last": 470,
+    "moves": [
+     "e4",
+     "e5",
+     "Nf3",
+     "Qf6",
+     "Bd3",
+     "d6",
+     "O-O",
+     "Bg4"
+    ]
+   },
+   {
+    "first": 483,
+    "last": 550,
+    "moves": [
+     "e4",
+     "e5",
+     "Nf3",
+     "Qf6",
+     "Bd3",
+     "d6",
+     "O-O",
+     "Bg4",
+     "Nc3"
+    ]
+   },
+   {
+    "first": 565,
+    "last": 600,
+    "moves": [
+     "e4",
+     "e5",
+     "Nf3",
+     "Qf6",
+     "Bd3",
+     "d6",
+     "O-O",
+     "Bg4",
+     "Nc3",
+     "d5"
+    ]
+   },
+   {
+    "first": 610,
+    "last": 650,
+    "moves": [
+     "e4",
+     "e5",
+     "Nf3",
+     "Qf6",
+     "Bd3",
+     "d6",
+     "O-O",
+     "Bg4",
+     "Nc3",
+     "d5",
+     "Nxd5"
+    ]
+   },
+   {
+    "first": 666,
+    "last": 740,
+    "moves": [
+     "e4",
+     "e5",
+     "Nf3",
+     "Qf6",
+     "Bd3",
+     "d6",
+     "O-O",
+     "Bg4",
+     "Nc3",
+     "d5",
+     "Nxd5",
+     "Nd7"
+    ]
+   },
+   {
+    "first": 752,
+    "last": 850,
+    "moves": [
+     "e4",
+     "e5",
+     "Nf3",
+     "Qf6",
+     "Bd3",
+     "d6",
+     "O-O",
+     "Bg4",
+     "Nc3",
+     "d5",
+     "Nxd5",
+     "Nd7",
+     "b3"
+    ]
+   },
+   {
+    "first": 858,
+    "last": 890,
+    "moves": [
+     "e4",
+     "e5",
+     "Nf3",
+     "Qf6",
+     "Bd3",
+     "d6",
+     "O-O",
+     "Bg4",
+     "Nc3",
+     "d5",
+     "Nxd5",
+     "Nd7",
+     "b3",
+     "O-O-O"
+    ]
+   },
+   {
+    "first": 898,
+    "last": 950,
+    "moves": [
+     "e4",
+     "e5",
+     "Nf3",
+     "Qf6",
+     "Bd3",
+     "d6",
+     "O-O",
+     "Bg4",
+     "Nc3",
+     "d5",
+     "Nxd5",
+     "Nd7",
+     "b3",
+     "O-O-O",
+     "Bb2"
+    ]
+   },
+   {
+    "first": 966,
+    "last": 1080,
+    "moves": [
+     "e4",
+     "e5",
+     "Nf3",
+     "Qf6",
+     "Bd3",
+     "d6",
+     "O-O",
+     "Bg4",
+     "Nc3",
+     "d5",
+     "Nxd5",
+     "Nd7",
+     "b3",
+     "O-O-O",
+     "Bb2",
+     "Ba3"
+    ]
+   },
+   {
+    "first": 1095,
+    "last": 1125,
+    "moves": [
+     "e4",
+     "e5",
+     "Nf3",
+     "Qf6",
+     "Bd3",
+     "d6",
+     "O-O",
+     "Bg4",
+     "Nc3",
+     "d5",
+     "Nxd5",
+     "Nd7",
+     "b3",
+     "O-O-O",
+     "Bb2",
+     "Ba3",
+     "Bxa3"
+    ]
+   },
+   {
+    "first": 1135,
+    "last": 1160,
+    "moves": [
+     "e4",
+     "e5",
+     "Nf3",
+     "Qf6",
+     "Bd3",
+     "d6",
+     "O-O",
+     "Bg4",
+     "Nc3",
+     "d5",
+     "Nxd5",
+     "Nd7",
+     "b3",
+     "O-O-O",
+     "Bb2",
+     "Ba3",
+     "Bxa3",
+     "Ne7"
+    ]
+   },
+   {
+    "first": 1168,
+    "last": 1185,
+    "moves": [
+     "e4",
+     "e5",
+     "Nf3",
+     "Qf6",
+     "Bd3",
+     "d6",
+     "O-O",
+     "Bg4",
+     "Nc3",
+     "d5",
+     "Nxd5",
+     "Nd7",
+     "b3",
+     "O-O-O",
+     "Bb2",
+     "Ba3",
+     "Bxa3",
+     "Ne7",
+     "h3"
+    ]
+   },
+   {
+    "first": 1192,
+    "last": 1576,
+    "moves": [
+     "e4",
+     "e5",
+     "Nf3",
+     "Qf6",
+     "Bd3",
+     "d6",
+     "O-O",
+     "Bg4",
+     "Nc3",
+     "d5",
+     "Nxd5",
+     "Nd7",
+     "b3",
+     "O-O-O",
+     "Bb2",
+     "Ba3",
+     "Bxa3",
+     "Ne7",
+     "h3",
+     "Rhf8"
+    ]
+   }
+  ]
+ },
+ "20261017_111040": {
+  "note": "nothing moved: the b2 pawn starts knocked over and is stood up; a sleeve at the edge",
+  "timeline": [
+   {
+    "first": 0,
+    "last": 127,
+    "moves": []
+   }
+  ]
+ }
+}

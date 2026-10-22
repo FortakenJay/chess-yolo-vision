@@ -34,15 +34,15 @@ class Tier(IntEnum):
 
 @dataclass
 class ConfirmSettings:
-    min_score: float = 500.0         # best move must explain at least this much change
-    t1_margin: float = 1500.0        # best minus runner-up for auto-accept
-    t2_margin: float = 800.0         # same, after averaging the re-reads
-    max_unexplained: float = 0.35    # share of the change in piece-sized blobs the best move leaves unexplained
-    max_off_board: float = 3000.0    # more change than this in blobs beyond the board edge = a hand is there
-    wait_off_board: float = 1000.0   # when no move fits, this much beyond the edge = a sleeve resting; wait, don't ask
-    min_end_ratio: float = 0.75      # where a piece clearly contrasts with its square, both ends of the move
-    clear_end_q: float = 0.45        # must change at least this share of the expected rate (q_in >= clear_end_q)
-    vote_frames: int = 3             # extra still frames to read in tier 2
+    min_score: float = 500.0  # best move must explain at least this much change
+    t1_margin: float = 1500.0  # best minus runner-up for auto-accept
+    t2_margin: float = 800.0  # same, after averaging the re-reads
+    max_unexplained: float = 0.35  # share of the change in piece-sized blobs the best move leaves unexplained
+    max_off_board: float = 3000.0  # more change than this in blobs beyond the board edge = a hand is there
+    wait_off_board: float = 1000.0  # when no move fits, this much beyond the edge = a sleeve resting; wait, don't ask
+    min_end_ratio: float = 0.75  # where a piece clearly contrasts with its square, both ends of the move
+    clear_end_q: float = 0.45  # must change at least this share of the expected rate (q_in >= clear_end_q)
+    vote_frames: int = 3  # extra still frames to read in tier 2
 
 
 def ends_ok(cand: Candidate, cfg: ConfirmSettings) -> bool:
@@ -51,16 +51,23 @@ def ends_ok(cand: Candidate, cfg: ConfirmSettings) -> bool:
     A sleeve resting over one corner square can look like a piece arriving there, but the square
     the piece supposedly left stays as it was. Black-on-dark ends are allowed to stay faint.
     """
-    return all(ratio >= cfg.min_end_ratio for ratio, q in ((cand.left_ratio, cand.left_q),
-                                                           (cand.arrived_ratio, cand.arrived_q))
-               if q >= cfg.clear_end_q)
+    return all(
+        ratio >= cfg.min_end_ratio
+        for ratio, q in ((cand.left_ratio, cand.left_q), (cand.arrived_ratio, cand.arrived_q))
+        if q >= cfg.clear_end_q
+    )
 
 
 def tier1_ok(result: MatchResult, cfg: ConfirmSettings) -> bool:
     best = result.best
-    return (best is not None and best.score >= cfg.min_score and result.margin >= cfg.t1_margin
-            and result.unexplained <= cfg.max_unexplained and result.off_board <= cfg.max_off_board
-            and ends_ok(best, cfg))
+    return (
+        best is not None
+        and best.score >= cfg.min_score
+        and result.margin >= cfg.t1_margin
+        and result.unexplained <= cfg.max_unexplained
+        and result.off_board <= cfg.max_off_board
+        and ends_ok(best, cfg)
+    )
 
 
 def average_results(results: list[MatchResult]) -> MatchResult:
@@ -71,18 +78,20 @@ def average_results(results: list[MatchResult]) -> MatchResult:
             totals.setdefault(cand.move, []).append(cand)
     merged = []
     for move, cands in totals.items():
-        merged.append(Candidate(
-            move=move,
-            score=float(np.mean([c.score for c in cands])),
-            mask_px=float(np.mean([c.mask_px for c in cands])),
-            explained=float(np.mean([c.explained for c in cands])),
-            left=float(np.mean([c.left for c in cands])),
-            arrived=float(np.mean([c.arrived for c in cands])),
-            left_ratio=float(np.mean([c.left_ratio for c in cands])),
-            arrived_ratio=float(np.mean([c.arrived_ratio for c in cands])),
-            left_q=float(np.mean([c.left_q for c in cands])),
-            arrived_q=float(np.mean([c.arrived_q for c in cands])),
-        ))
+        merged.append(
+            Candidate(
+                move=move,
+                score=float(np.mean([c.score for c in cands])),
+                mask_px=float(np.mean([c.mask_px for c in cands])),
+                explained=float(np.mean([c.explained for c in cands])),
+                left=float(np.mean([c.left for c in cands])),
+                arrived=float(np.mean([c.arrived for c in cands])),
+                left_ratio=float(np.mean([c.left_ratio for c in cands])),
+                arrived_ratio=float(np.mean([c.arrived_ratio for c in cands])),
+                left_q=float(np.mean([c.left_q for c in cands])),
+                arrived_q=float(np.mean([c.arrived_q for c in cands])),
+            )
+        )
     merged.sort(key=lambda c: c.score, reverse=True)
     total = float(np.mean([r.total_change for r in results]))
     out = MatchResult(merged, total, notes=[f"averaged {len(results)} reads"])
@@ -96,9 +105,14 @@ def average_results(results: list[MatchResult]) -> MatchResult:
 
 def tier2_ok(result: MatchResult, cfg: ConfirmSettings) -> bool:
     best = result.best
-    return (best is not None and best.score >= cfg.min_score and result.margin >= cfg.t2_margin
-            and result.unexplained <= cfg.max_unexplained and result.off_board <= cfg.max_off_board
-            and ends_ok(best, cfg))
+    return (
+        best is not None
+        and best.score >= cfg.min_score
+        and result.margin >= cfg.t2_margin
+        and result.unexplained <= cfg.max_unexplained
+        and result.off_board <= cfg.max_off_board
+        and ends_ok(best, cfg)
+    )
 
 
 class LlmJudge:
@@ -133,8 +147,14 @@ class LlmJudge:
             raise ValueError("couldn't encode image")
         return base64.standard_b64encode(buf.tobytes()).decode("ascii")
 
-    def choose(self, board: chess.Board, before: np.ndarray, after: np.ndarray,
-               candidates: list[chess.Move], orientation_note: str) -> chess.Move | None:
+    def choose(
+        self,
+        board: chess.Board,
+        before: np.ndarray,
+        after: np.ndarray,
+        candidates: list[chess.Move],
+        orientation_note: str,
+    ) -> chess.Move | None:
         if self.client is None or not candidates:
             return None
         import anthropic
@@ -153,18 +173,28 @@ class LlmJudge:
                 output_config={"effort": "low"},
                 betas=["server-side-fallback-2026-07-01"],
                 fallbacks="default",
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": "BEFORE the move:"},
-                        {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
-                                                     "data": self._jpeg_b64(before)}},
-                        {"type": "text", "text": "AFTER the move:"},
-                        {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
-                                                     "data": self._jpeg_b64(after)}},
-                        {"type": "text", "text": context},
-                    ],
-                }],
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "BEFORE the move:"},
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": "image/jpeg",
+                                    "data": self._jpeg_b64(before),
+                                },
+                            },
+                            {"type": "text", "text": "AFTER the move:"},
+                            {
+                                "type": "image",
+                                "source": {"type": "base64", "media_type": "image/jpeg", "data": self._jpeg_b64(after)},
+                            },
+                            {"type": "text", "text": context},
+                        ],
+                    }
+                ],
             )
         except anthropic.APIConnectionError:
             logger.warning("Tier 3: can't reach the Anthropic API (offline?)")

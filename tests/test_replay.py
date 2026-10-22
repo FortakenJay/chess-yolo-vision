@@ -12,11 +12,19 @@ from chessreader.replay import run_replay
 from chessreader.settings import Settings
 from tests.scene import FRAME, OUTER, OVERHEAD, make_camera, render, table_texture
 
-GAME = "e4 e5 Nf3 Nc6 Bc4 Bc5 O-O Nf6 d3 d6 Bg5 h6 Bxf6 Qxf6 Nc3 O-O".split()
+GAME = ["e4", "e5", "Nf3", "Nc6", "Bc4", "Bc5", "O-O", "Nf6", "d3", "d6", "Bg5", "h6", "Bxf6", "Qxf6", "Nc3", "O-O"]
 
 
-def write_session(tmp_path, moves, seed=0, hand_frames=2, still_frames=3, bumps=None, dark_square=(40, 70, 45),
-                  outline=(110, 110, 110)):
+def write_session(
+    tmp_path,
+    moves,
+    seed=0,
+    hand_frames=2,
+    still_frames=3,
+    bumps=None,
+    dark_square=(40, 70, 45),
+    outline=(110, 110, 110),
+):
     """bumps: {move index: (dx, dy, degrees)}, the camera shifting while that move is made."""
     cal, cam = make_camera()
     rng = np.random.default_rng(seed)
@@ -47,8 +55,9 @@ def write_session(tmp_path, moves, seed=0, hand_frames=2, still_frames=3, bumps=
             turn = np.vstack([cv2.getRotationMatrix2D((FRAME[0] / 2, FRAME[1] / 2), degrees, 1.0), [0, 0, 1]])
             camera_shift = np.array([[1, 0, dx], [0, 1, dy], [0, 0, 1]]) @ turn @ camera_shift
         # a "hand" sweeping in over the from-square, then the new position
-        x, y = cam.project(np.array([[chess.square_file(move.from_square) + .5,
-                                      7 - chess.square_rank(move.from_square) + .5, -1.0]]))[0]
+        x, y = cam.project(
+            np.array([[chess.square_file(move.from_square) + 0.5, 7 - chess.square_rank(move.from_square) + 0.5, -1.0]])
+        )[0]
         for k in range(hand_frames):
             img = render(cam, cal, board, rng, table=table, dark_square=dark_square, outline=outline)
             cv2.ellipse(img, (int(x) + 30 * k, int(y)), (70, 45), 20, 0, 360, (120, 150, 200), -1)
@@ -58,7 +67,19 @@ def write_session(tmp_path, moves, seed=0, hand_frames=2, still_frames=3, bumps=
         else:
             board.push(move)
         for _ in range(still_frames):
-            emit(render(cam, cal, board, rng, exposure=rng.uniform(-4, 4), table=table, dark_square=dark_square, outline=outline), "PLAYING")
+            emit(
+                render(
+                    cam,
+                    cal,
+                    board,
+                    rng,
+                    exposure=rng.uniform(-4, 4),
+                    table=table,
+                    dark_square=dark_square,
+                    outline=outline,
+                ),
+                "PLAYING",
+            )
     with open(folder / "frames.csv", "w", newline="", encoding="utf-8") as f:
         csv.writer(f).writerows(rows)
     game = chess.pgn.Game.from_board(board)
@@ -105,8 +126,8 @@ def test_camera_bumped_mid_game_is_followed(tmp_path):
 def test_moves_put_back_by_hand_are_taken_back(tmp_path):
     """The live game that kept a move the player had put back: the board state must follow the hands."""
     from chessreader.calibration import Calibration
-    from chessreader.session import GameSession, Phase
     from chessreader.replay import frames_from
+    from chessreader.session import GameSession, Phase
 
     moves = ["e4", "d5", "takeback", "Nc6", "takeback", "h5", "takeback", "c5", "Nf3"]
     folder, _ = write_session(tmp_path, moves, seed=7, still_frames=5)
@@ -126,8 +147,14 @@ def test_moves_put_back_by_hand_are_taken_back(tmp_path):
 def test_dark_board_start_keeps_the_calibration_that_fits(tmp_path):
     """On a dark board the start position's middle ranks are found, but tall pieces can hide corners
     and snap the grid a rank off. Start must keep whichever calibration lines the pieces up."""
-    folder, pgn = write_session(tmp_path, ["e4", "g6", "d4", "Bg7", "Nf3", "Bf6"], seed=4, still_frames=5,
-                                dark_square=(34, 36, 38), outline=(48, 48, 50))
+    folder, pgn = write_session(
+        tmp_path,
+        ["e4", "g6", "d4", "Bg7", "Nf3", "Bf6"],
+        seed=4,
+        still_frames=5,
+        dark_square=(34, 36, 38),
+        outline=(48, 48, 50),
+    )
     settings = Settings()
     settings.storage.exports_dir = str(tmp_path / "exports")
     settings.engine.enabled = False
@@ -143,7 +170,7 @@ def _session_with_hand_off_board(tmp_path, at, radius, moves_before, move_during
     rng = np.random.default_rng(11)
     board = chess.Board()
     frames, t = [], 0.0
-    x, y = cam.project(np.array([at + (0.0,)]))[0]
+    x, y = cam.project(np.array([(*at, 0.0)]))[0]
 
     def add(hand: bool, n: int, sweep_over: str | None = None):
         nonlocal t
@@ -153,7 +180,9 @@ def _session_with_hand_off_board(tmp_path, at, radius, moves_before, move_during
                 cv2.ellipse(img, (int(x), int(y)), radius, 30, 0, 360, (120, 150, 200), -1)
             if sweep_over:  # the moving hand, so the motion gate sees the move being made
                 sq = chess.parse_square(sweep_over)
-                hx, hy = cam.project(np.array([[chess.square_file(sq) + .5, 7 - chess.square_rank(sq) + .5, -1.0]]))[0]
+                hx, hy = cam.project(np.array([[chess.square_file(sq) + 0.5, 7 - chess.square_rank(sq) + 0.5, -1.0]]))[
+                    0
+                ]
                 cv2.ellipse(img, (int(hx), int(hy)), (70, 45), 20, 0, 360, (120, 150, 200), -1)
             frames.append((img, t))
             t += 1.2
@@ -186,11 +215,20 @@ def test_hand_resting_by_a_corner_is_not_a_move(tmp_path):
     settings = Settings()
     settings.engine.enabled = False
     settings.storage.exports_dir = str(tmp_path / "exports")
-    cal, frames = _session_with_hand_off_board(tmp_path, (8.45, 7.7), (40, 30),
-                                                ["e4", "c5", "Nf3", "d6", "Bc4", "Nf6", "O-O", "a6"], outer=OVERHEAD)
+    cal, frames = _session_with_hand_off_board(
+        tmp_path, (8.45, 7.7), (40, 30), ["e4", "c5", "Nf3", "d6", "Bc4", "Nf6", "O-O", "a6"], outer=OVERHEAD
+    )
     session = _play(settings, cal, frames)
-    assert [m.uci() for m in session.board.move_stack] == ["e2e4", "c7c5", "g1f3", "d7d6", "f1c4", "g8f6",
-                                                           "e1g1", "a7a6"]  # and no Kh1
+    assert [m.uci() for m in session.board.move_stack] == [
+        "e2e4",
+        "c7c5",
+        "g1f3",
+        "d7d6",
+        "f1c4",
+        "g8f6",
+        "e1g1",
+        "a7a6",
+    ]  # and no Kh1
 
 
 def test_sleeve_beside_the_board_does_not_block_a_clean_move(tmp_path):
@@ -198,8 +236,16 @@ def test_sleeve_beside_the_board_does_not_block_a_clean_move(tmp_path):
     settings = Settings()
     settings.engine.enabled = False
     settings.storage.exports_dir = str(tmp_path / "exports")
-    cal, frames = _session_with_hand_off_board(tmp_path, (2.5, -0.55), (42, 24), ["e4"], move_during="c5",
-                                                outer=OVERHEAD, dark_square=(34, 36, 38), outline=(48, 48, 50))
+    cal, frames = _session_with_hand_off_board(
+        tmp_path,
+        (2.5, -0.55),
+        (42, 24),
+        ["e4"],
+        move_during="c5",
+        outer=OVERHEAD,
+        dark_square=(34, 36, 38),
+        outline=(48, 48, 50),
+    )
     session = _play(settings, cal, frames)
     assert [m.uci() for m in session.board.move_stack] == ["e2e4", "c7c5"]
 
@@ -209,11 +255,20 @@ def test_sleeve_over_a_corner_square_is_not_a_move(tmp_path):
     settings = Settings()
     settings.engine.enabled = False
     settings.storage.exports_dir = str(tmp_path / "exports")
-    cal, frames = _session_with_hand_off_board(tmp_path, (8.0, 8.0), (46, 34),
-                                                ["e4", "c5", "Nf3", "d6", "Bc4", "Nf6", "O-O", "a6"], outer=OVERHEAD)
+    cal, frames = _session_with_hand_off_board(
+        tmp_path, (8.0, 8.0), (46, 34), ["e4", "c5", "Nf3", "d6", "Bc4", "Nf6", "O-O", "a6"], outer=OVERHEAD
+    )
     session = _play(settings, cal, frames)
-    assert [m.uci() for m in session.board.move_stack] == ["e2e4", "c7c5", "g1f3", "d7d6", "f1c4", "g8f6",
-                                                           "e1g1", "a7a6"]
+    assert [m.uci() for m in session.board.move_stack] == [
+        "e2e4",
+        "c7c5",
+        "g1f3",
+        "d7d6",
+        "f1c4",
+        "g8f6",
+        "e1g1",
+        "a7a6",
+    ]
 
 
 def test_board_dots_follow_every_move(tmp_path):
@@ -265,8 +320,8 @@ def test_pawn_stood_back_up_is_not_a_move(tmp_path):
             t += 1.2
 
     add(tipped, 4, lying=True)
-    add(tipped, 2, lying=True, hand_over=(1.5, 6.5))   # the hand picks it up...
-    add(board, 6)                                       # ...and it stands on b2 again
+    add(tipped, 2, lying=True, hand_over=(1.5, 6.5))  # the hand picks it up...
+    add(board, 6)  # ...and it stands on b2 again
     add(board, 2, hand_over=(4.5, 6.5))
     board.push_san("e4")
     add(board, 6)

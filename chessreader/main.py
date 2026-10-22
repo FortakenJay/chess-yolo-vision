@@ -1,12 +1,12 @@
 """Chess reader entry point.
 
-    .\\.venv\\Scripts\\python run.py play          # play a game (default command)
-    .\\.venv\\Scripts\\python run.py play --start  # auto-calibrate and start the game
-    .\\.venv\\Scripts\\python run.py replay sessions\\<folder> --pgn game.pgn
-    .\\.venv\\Scripts\\python run.py check         # network + camera settings, no windows
-    .\\.venv\\Scripts\\python run.py calibrate     # calibrate (empty board or start position), then view
-    .\\.venv\\Scripts\\python run.py view          # live raw + top-down view
-    .\\.venv\\Scripts\\python run.py record        # save the live stream to a video file
+.\\.venv\\Scripts\\python run.py play          # play a game (default command)
+.\\.venv\\Scripts\\python run.py play --start  # auto-calibrate and start the game
+.\\.venv\\Scripts\\python run.py replay sessions\\<folder> --pgn game.pgn
+.\\.venv\\Scripts\\python run.py check         # network + camera settings, no windows
+.\\.venv\\Scripts\\python run.py calibrate     # calibrate (empty board or start position), then view
+.\\.venv\\Scripts\\python run.py view          # live raw + top-down view
+.\\.venv\\Scripts\\python run.py record        # save the live stream to a video file
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ import numpy as np
 from .calibration import Calibration, CalibrationError, load_reference, run_calibration
 from .display import RED, draw_grid, draw_hud, draw_quad
 from .settings import DEFAULT_CONFIG, Settings, load_settings, resolve_path
-from .stream import CameraControl, CameraUnreachable, FrameGrabber, bypass_proxy, check_camera_network
+from .stream import CameraControl, CameraUnreachableError, FrameGrabber, bypass_proxy, check_camera_network
 
 logger = logging.getLogger("chessreader")
 
@@ -57,7 +57,7 @@ def prepare_camera(settings: Settings) -> bool:
     bypass_proxy(cam.host)
     try:
         check_camera_network(cam.host, cam.http_port, cam.connect_timeout_s)
-    except CameraUnreachable as exc:
+    except CameraUnreachableError as exc:
         logger.error("%s", exc)
         return False
     if cam.apply_controls:
@@ -69,10 +69,7 @@ def prepare_camera(settings: Settings) -> bool:
 
 
 def load_calibration(settings: Settings) -> Calibration | None:
-    try:
-        return Calibration.load(resolve_path(settings.calibration.dir))
-    except FileNotFoundError:
-        return None
+    return Calibration.load_saved(resolve_path(settings.calibration.dir))
 
 
 def rotate_saved(cal: Calibration, settings: Settings) -> Calibration:
@@ -133,7 +130,9 @@ def cmd_view(settings: Settings, force_calibrate: bool) -> int:
                 logger.info("Calibration cancelled.")
                 return 1
         else:
-            logger.info("Loaded %s calibration from %s (created %s)", cal.method, settings.calibration.dir, cal.created_at)
+            logger.info(
+                "Loaded %s calibration from %s (created %s)", cal.method, settings.calibration.dir, cal.created_at
+            )
 
         cv2.namedWindow(RAW_WINDOW, cv2.WINDOW_NORMAL)
         cv2.namedWindow(BOARD_WINDOW, cv2.WINDOW_NORMAL)
@@ -148,8 +147,10 @@ def cmd_view(settings: Settings, force_calibrate: bool) -> int:
                 vis = raw.copy()
                 draw_quad(vis, cal.outer_corners)
                 status = "live" if grabber.connected else "RECONNECTING"
-                draw_hud(vis, [f"{w}x{h}  {grabber.fps:.1f} fps  {status}",
-                               "Q quit  C recalibrate  O rotate board  P snapshot"])
+                draw_hud(
+                    vis,
+                    [f"{w}x{h}  {grabber.fps:.1f} fps  {status}", "Q quit  C recalibrate  O rotate board  P snapshot"],
+                )
                 cv2.imshow(RAW_WINDOW, vis)
                 try:
                     warped = cal.warp(raw)
@@ -193,7 +194,7 @@ def cmd_record(settings: Settings) -> int:
     path = directory / f"game_{datetime.now():%Y%m%d_%H%M%S}.mp4"
     h, w = first.image.shape[:2]
     fps = settings.record.fps
-    writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
+    writer = cv2.VideoWriter(str(path), cv2.VideoWriter.fourcc(*"mp4v"), fps, (w, h))
     logger.info("Recording %dx%d at %.0f fps to %s. Press Q to stop.", w, h, fps, path)
 
     cv2.namedWindow(RAW_WINDOW, cv2.WINDOW_NORMAL)
@@ -233,8 +234,9 @@ def cmd_play(settings: Settings, auto_start: bool = False) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Chess board reader")
-    parser.add_argument("command", nargs="?", default="play",
-                        choices=["play", "replay", "check", "calibrate", "view", "record"])
+    parser.add_argument(
+        "command", nargs="?", default="play", choices=["play", "replay", "check", "calibrate", "view", "record"]
+    )
     parser.add_argument("source", nargs="?", help="replay: a session folder or a video file")
     parser.add_argument("--pgn", help="replay: ground-truth PGN to score against")
     parser.add_argument("--llm", action="store_true", help="replay: allow tier 3 (costs API calls)")

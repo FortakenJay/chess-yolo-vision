@@ -63,7 +63,7 @@ def test_badges_sharing_a_square_use_different_corners():
 
 
 def test_reset_starts_over_and_keeps_the_old_pgn(setup):
-    settings, cal, frame, new_session = setup
+    _, cal, frame, new_session = setup
     session = new_session(cal)
     assert session.start_game(frame()) is None
     board = played(session, ["e4"])

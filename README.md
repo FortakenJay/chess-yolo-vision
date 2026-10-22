@@ -209,11 +209,13 @@ Full explanation with the maths: [docs/how-it-works.md](docs/how-it-works.md).
 chess-yolo-vision/
 ├── run.py                  entry point:  python run.py <command>
 ├── config.yaml             all settings and thresholds
-├── requirements.txt
+├── pyproject.toml          package metadata, dependencies, ruff / mypy / pytest config
+├── requirements.txt        runtime dependencies only (pip install -e ".[dev]" for the dev tools)
+├── .pre-commit-config.yaml ruff, mypy and pytest on every commit
 ├── chessreader/            the Python package
 │   ├── main.py             command line (play, replay, check, calibrate, view, record)
-│   ├── play.py             live game: windows, keys, Stockfish
-│   ├── session.py          one game: gating → matching → tiers → PGN (no UI; shared by play and replay)
+│   ├── play.py             live game (LiveGame): windows, one handler per key, Stockfish
+│   ├── session.py          one game: gating → matching → tiers → PGN (no UI; shared by play, replay, tools)
 │   ├── stream.py           ESP32 camera: settings over /control, frame reader with reconnects
 │   ├── calibration.py      board detection, homography, manual corner clicking
 │   ├── geometry.py         camera model, piece outlines, orientation from piece colours
@@ -224,13 +226,14 @@ chess-yolo-vision/
 │   ├── health.py           sync and drift checks
 │   ├── tracking.py         follows camera shifts (feature matching between frames)
 │   ├── engine.py           Stockfish in a background thread
-│   ├── storage.py          PGN writer (with ECO/Opening tags)
+│   ├── storage.py          PGN writer (with ECO/Opening tags) and the session recording for replay
 │   ├── openings.py         opening book: name, ECO, theory moves
 │   ├── data/openings.tsv   the book: 1,370 named lines
 │   ├── replay.py           replay a recorded session and score it against a PGN
 │   ├── display.py          drawing helpers
 │   └── settings.py         config loading
 ├── tests/                  pytest suite (synthetic scenes) + tests/data/test_game.pgn
+├── tools/                  eval_sessions.py (score recorded games frame by frame) + its truth timelines
 ├── firmware/CameraWebServer/   ESP32 sketch (Arduino)
 ├── models/
 │   ├── pieces.pt           YOLO piece detector (13 classes), used for promotions only
@@ -269,11 +272,11 @@ Every setting is explained in [docs/configuration.md](docs/configuration.md).
 .\.venv\Scripts\python -m pytest tests -q
 ```
 
-48 tests: calibration (corner extrapolation, never mirroring, save/load), the frame reader, the
+51 tests: calibration (corner extrapolation, never mirroring, save/load), the frame reader, the
 change map (black on dark, nudged edges, exposure), move matching on synthetic camera scenes
 (captures, both castles, en passant, promotion, missed moves, faint black-on-dark moves), finding
-Stockfish, the opening book (every line legal, transpositions), the Board window and the R reset,
-and whole recorded games replayed end to end, including a bumped camera, moves taken
+Stockfish, the opening book (every line legal, transpositions), the Board window, the live key loop
+with a fake camera, and whole recorded games replayed end to end, including a bumped camera, moves taken
 back by hand, a hand or sleeve resting beside or on the board's edge, and a knocked-over pawn
 stood back up.
 
@@ -284,8 +287,12 @@ stood back up.
 ```
 
 It prints, per move, what was read, the right move, the tier and the margin, then the auto-accept
-rate and the number of **wrong accepts** (target: 0). Details and current results:
-[docs/testing.md](docs/testing.md).
+rate and the number of **wrong accepts** (target: 0). For games with takebacks,
+`tools/eval_sessions.py` checks every still frame against what was really on the board. Details and
+current results: [docs/testing.md](docs/testing.md).
+
+**Code quality.** ruff (lint + format), mypy and vulture all pass; `pre-commit` runs them with the
+tests on every commit. Setup and commands: [docs/development.md](docs/development.md).
 
 ---
 
@@ -315,5 +322,7 @@ rate and the number of **wrong accepts** (target: 0). Details and current result
 | [docs/how-it-works.md](docs/how-it-works.md) | The pipeline in detail, with the maths |
 | [docs/configuration.md](docs/configuration.md) | Every setting in `config.yaml` |
 | [docs/testing.md](docs/testing.md) | Tests, the replay harness, QA results |
+| [docs/development.md](docs/development.md) | Dev setup, ruff / mypy / pre-commit, verifying a change, code structure |
+| [docs/series-log.md](docs/series-log.md) | The build as episodes: each fix, its commit and tag, and how to film it |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | Symptoms and fixes |
 | [docs/original-spec.md](docs/original-spec.md) | The original build specification (some parts since changed) |

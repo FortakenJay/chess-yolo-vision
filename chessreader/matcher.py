@@ -38,27 +38,29 @@ TABLE, LIGHT, DARK, WHITE, BLACK = range(5)
 class Candidate:
     move: chess.Move
     score: float
-    mask_px: float      # predicted-change area (full-res px)
-    explained: float    # observed change inside the mask (full-res px)
-    left: float = 0.0     # evidence on the board where the piece was (log-likelihood, full-res px)
+    mask_px: float  # predicted-change area (full-res px)
+    explained: float  # observed change inside the mask (full-res px)
+    left: float = 0.0  # evidence on the board where the piece was (log-likelihood, full-res px)
     arrived: float = 0.0  # ... and where it now stands
     # observed change rate at each end relative to the rate expected there (q_in for those pixels):
     # about 1 for a real move, near 0 for an end that didn't change (a sleeve over the other end)
     left_ratio: float = 1.0
     arrived_ratio: float = 1.0
-    left_q: float = 0.0      # expected change rate at each end: high where the piece contrasts with
-    arrived_q: float = 0.0   # what's behind it, low for black on dark / white on light
+    left_q: float = 0.0  # expected change rate at each end: high where the piece contrasts with
+    arrived_q: float = 0.0  # what's behind it, low for black on dark / white on light
 
 
 @dataclass
 class MatchResult:
     candidates: list[Candidate]
-    total_change: float          # observed change mass in the board region (full-res px)
-    unexplained: float = 0.0     # share of observed change in piece-sized blobs outside the best move's mask
-    margin: float = 0.0          # best score minus runner-up score
-    off_board: float = 0.0       # change beyond the board edge in hand-sized blobs (full-res px)
+    total_change: float  # observed change mass in the board region (full-res px)
+    unexplained: float = 0.0  # share of observed change in piece-sized blobs outside the best move's mask
+    margin: float = 0.0  # best score minus runner-up score
+    off_board: float = 0.0  # change beyond the board edge in hand-sized blobs (full-res px)
     is_promotion: bool = False
     notes: list[str] = field(default_factory=list)
+    # the change map this result was read from (empty for an average of several reads)
+    change: np.ndarray = field(default_factory=lambda: np.zeros((0, 0), np.float32), repr=False)
 
     @property
     def best(self) -> Candidate | None:
@@ -69,9 +71,16 @@ class MatchResult:
 
 
 class MoveMatcher:
-    def __init__(self, cam: BoardCamera, roi: tuple[int, int, int, int], scale: float,
-                 q_in: float = 0.55, q_out: float = 0.03, q_in_low: float = 0.25,
-                 off_board_weight: float = 1.0) -> None:
+    def __init__(
+        self,
+        cam: BoardCamera,
+        roi: tuple[int, int, int, int],
+        scale: float,
+        q_in: float = 0.55,
+        q_out: float = 0.03,
+        q_in_low: float = 0.25,
+        off_board_weight: float = 1.0,
+    ) -> None:
         self.cam = cam
         self.roi = roi
         self.scale = scale
@@ -123,7 +132,9 @@ class MoveMatcher:
         out = np.zeros(self.region.shape, np.uint8)
         for sq in chess.SQUARES:
             cx, cy = square_center(sq)
-            corners = np.array([[cx - .5, cy - .5, 0], [cx + .5, cy - .5, 0], [cx + .5, cy + .5, 0], [cx - .5, cy + .5, 0]])
+            corners = np.array(
+                [[cx - 0.5, cy - 0.5, 0], [cx + 0.5, cy - 0.5, 0], [cx + 0.5, cy + 0.5, 0], [cx - 0.5, cy + 0.5, 0]]
+            )
             poly = np.round((self.cam.project(corners) - [x0, y0]) * self.scale).astype(np.int32)
             light = (chess.square_file(sq) + chess.square_rank(sq)) % 2 == 1
             cv2.fillPoly(out, [poly.reshape(-1, 1, 2)], LIGHT if light else DARK)
@@ -148,8 +159,16 @@ class MoveMatcher:
         """Square of the piece visible at each pixel, -1 where none."""
         return np.where(labels > 0, (labels.astype(np.int32) - 1) // 12, -1)
 
-    def _candidate(self, board: chess.Board, move: chess.Move, mask: np.ndarray, before_labels: np.ndarray,
-                   before_tones: np.ndarray, after_labels: np.ndarray, change: np.ndarray) -> Candidate:
+    def _candidate(
+        self,
+        board: chess.Board,
+        move: chess.Move,
+        mask: np.ndarray,
+        before_labels: np.ndarray,
+        before_tones: np.ndarray,
+        after_labels: np.ndarray,
+        change: np.ndarray,
+    ) -> Candidate:
         pair = before_tones[mask].astype(np.intp) * 5 + self.tones(after_labels)[mask]
         b = change[mask]
         llr = b * self._pair_reward[pair] + (1.0 - b) * self._pair_penalty[pair]
@@ -167,11 +186,18 @@ class MoveMatcher:
         def ratio(sel: np.ndarray) -> float:
             return float(b[sel].mean() / q[sel].mean()) if sel.any() else 1.0
 
-        return Candidate(move, score, float(mask.sum()) * self.px, float(b.sum()) * self.px,
-                         left=float(llr[was].sum()) * self.px, arrived=float(llr[now].sum()) * self.px,
-                         left_ratio=ratio(was), arrived_ratio=ratio(now),
-                         left_q=float(q[was].mean()) if was.any() else 0.0,
-                         arrived_q=float(q[now].mean()) if now.any() else 0.0)
+        return Candidate(
+            move,
+            score,
+            float(mask.sum()) * self.px,
+            float(b.sum()) * self.px,
+            left=float(llr[was].sum()) * self.px,
+            arrived=float(llr[now].sum()) * self.px,
+            left_ratio=ratio(was),
+            arrived_ratio=ratio(now),
+            left_q=float(q[was].mean()) if was.any() else 0.0,
+            arrived_q=float(q[now].mean()) if now.any() else 0.0,
+        )
 
     def unexplained_blobs(self, change: np.ndarray, mask: np.ndarray) -> float:
         """Observed change outside the move's mask that forms piece-sized blobs (full-res px).
@@ -238,6 +264,7 @@ class MoveMatcher:
         """change: change probability map over the ROI at the work scale."""
         if change.shape != self.region.shape:
             raise ValueError(f"change map {change.shape} doesn't match region {self.region.shape}")
+        observed = change
         change = np.where(self.region, change, 0.0).astype(np.float32)
         total = float(change.sum()) * self.px  # all of it: a hand resting off the board still counts
 
@@ -254,7 +281,7 @@ class MoveMatcher:
             masks[move] = mask
             candidates.append(self._candidate(board, move, mask, before, before_tones, after, change))
         candidates.sort(key=lambda c: c.score, reverse=True)
-        result = MatchResult(candidates, total)
+        result = MatchResult(candidates, total, change=observed)
         if candidates:
             best = candidates[0]
             result.margin = best.score - (candidates[1].score if len(candidates) > 1 else 0.0)

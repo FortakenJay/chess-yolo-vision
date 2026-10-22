@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 import cv2
 import numpy as np
@@ -18,7 +18,7 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
-class GateState(str, Enum):
+class GateState(StrEnum):
     MOVING = "moving"
     SETTLING = "settling"
     STABLE = "stable"
@@ -27,8 +27,8 @@ class GateState(str, Enum):
 @dataclass
 class GateUpdate:
     state: GateState
-    motion: float          # fraction of region pixels that changed since the previous frame
-    became_stable: bool    # True only on the frame where the board turned stable
+    motion: float  # fraction of region pixels that changed since the previous frame
+    became_stable: bool  # True only on the frame where the board turned stable
 
 
 class MotionGate:
@@ -63,10 +63,6 @@ class MotionGate:
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
         small = cv2.resize(gray, self.size, interpolation=cv2.INTER_AREA)
         return cv2.GaussianBlur(small, (5, 5), 0).astype(np.int16)
-
-    def motion_between(self, a: np.ndarray, b: np.ndarray) -> float:
-        diff = np.abs(self._prep(a) - self._prep(b))
-        return float((diff[self.mask] > self.pixel_threshold).mean())
 
     def reset(self, timestamp: float) -> None:
         """Forget the stable streak (e.g. after a move was accepted or rejected)."""

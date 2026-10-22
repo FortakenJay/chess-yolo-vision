@@ -15,7 +15,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import cv2
@@ -46,14 +46,18 @@ def warp_corners(warp_size: int) -> np.ndarray:
 
 @dataclass
 class Calibration:
-    homography: np.ndarray        # 3x3, image -> warp
-    outer_corners: np.ndarray     # (4, 2) image coords, in warp order TL, TR, BR, BL
-    frame_size: tuple[int, int]   # (w, h) of the frames it was made from
+    homography: np.ndarray  # 3x3, image -> warp
+    outer_corners: np.ndarray  # (4, 2) image coords, in warp order TL, TR, BR, BL
+    frame_size: tuple[int, int]  # (w, h) of the frames it was made from
     warp_size: int
-    method: str                   # "auto" or "manual"
+    method: str  # "auto" or "manual"
     reprojection_px: float | None = None
     inner_corners: np.ndarray | None = None  # (49, 2) image coords, auto only
-    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat(timespec="seconds"))
+
+    def fits(self, max_px: float) -> bool:
+        """The automatic fit error is within `max_px`. A calibration without one (clicked corners) never fits."""
+        return self.reprojection_px is not None and self.reprojection_px <= max_px
 
     @property
     def square_px(self) -> float:
@@ -67,7 +71,7 @@ class Calibration:
             )
         return cv2.warpPerspective(frame, self.homography, (self.warp_size, self.warp_size))
 
-    def rotated(self, quarter_turns: int) -> "Calibration":
+    def rotated(self, quarter_turns: int) -> Calibration:
         """Same calibration with the top-down view turned clockwise by 90 deg per quarter turn."""
         s = float(self.warp_size)
         turn = np.array([[0, -1, s], [1, 0, 0], [0, 0, 1]], dtype=np.float64)
@@ -78,17 +82,16 @@ class Calibration:
             corners = np.roll(corners, 1, axis=0)
         return replace(self, homography=h / h[2, 2], outer_corners=corners)
 
-    def moved(self, shift: np.ndarray) -> "Calibration":
+    def moved(self, shift: np.ndarray) -> Calibration:
         """Same board after the image moved by `shift` (3x3, old image -> new image)."""
         h = self.homography.astype(np.float64) @ np.linalg.inv(shift)
 
-        def move(pts: np.ndarray | None) -> np.ndarray | None:
-            if pts is None:
-                return None
-            return cv2.perspectiveTransform(pts.reshape(-1, 1, 2).astype(np.float64), shift).reshape(-1, 2).astype(np.float32)
+        def move(pts: np.ndarray) -> np.ndarray:
+            moved = cv2.perspectiveTransform(pts.reshape(-1, 1, 2).astype(np.float64), shift)
+            return moved.reshape(-1, 2).astype(np.float32)
 
-        return replace(self, homography=h / h[2, 2], outer_corners=move(self.outer_corners),
-                       inner_corners=move(self.inner_corners))
+        inner = None if self.inner_corners is None else move(self.inner_corners)
+        return replace(self, homography=h / h[2, 2], outer_corners=move(self.outer_corners), inner_corners=inner)
 
     def to_json(self) -> dict:
         return {
@@ -103,7 +106,7 @@ class Calibration:
         }
 
     @classmethod
-    def from_json(cls, data: dict) -> "Calibration":
+    def from_json(cls, data: dict) -> Calibration:
         inner = data.get("inner_corners")
         return cls(
             homography=np.array(data["homography"], dtype=np.float64),
@@ -120,19 +123,35 @@ class Calibration:
         """Write the JSON plus the empty-board reference images derived from raw_empty."""
         directory.mkdir(parents=True, exist_ok=True)
         warped = self.warp(raw_empty)
-        (directory / CALIBRATION_FILE).write_text(json.dumps(self.to_json(), indent=2), encoding="utf-8")
+        self.save_json(directory)
         cv2.imwrite(str(directory / RAW_FILE), raw_empty)
         cv2.imwrite(str(directory / WARP_FILE), warped)
         cv2.imwrite(str(directory / EDGES_FILE), edge_map(warped, canny_low, canny_high))
-        logger.info("Calibration saved to %s (%s, fit error %s)", directory, self.method,
-                    "n/a" if self.reprojection_px is None else f"{self.reprojection_px:.2f}px")
+        logger.info(
+            "Calibration saved to %s (%s, fit error %s)",
+            directory,
+            self.method,
+            "n/a" if self.reprojection_px is None else f"{self.reprojection_px:.2f}px",
+        )
 
     @classmethod
-    def load(cls, directory: Path) -> "Calibration":
+    def load(cls, directory: Path) -> Calibration:
         path = directory / CALIBRATION_FILE
         if not path.exists():
             raise FileNotFoundError(f"No calibration at {path}")
         return cls.from_json(json.loads(path.read_text(encoding="utf-8")))
+
+    @classmethod
+    def load_saved(cls, directory: Path) -> Calibration | None:
+        """The calibration saved in `directory`, or None if there is none yet."""
+        try:
+            return cls.load(directory)
+        except FileNotFoundError:
+            return None
+
+    def save_json(self, directory: Path) -> None:
+        """Only the JSON (a session folder keeps no reference images)."""
+        (directory / CALIBRATION_FILE).write_text(json.dumps(self.to_json(), indent=2), encoding="utf-8")
 
 
 def load_reference(directory: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -162,7 +181,7 @@ def grid_error(grid: np.ndarray) -> float:
     r, c = np.mgrid[0:rows, 0:cols]
     ideal = (np.stack([c, r], axis=-1).reshape(-1, 2) * 100).astype(np.float32)
     pts = grid.reshape(-1, 2).astype(np.float32)
-    h, _ = cv2.findHomography(pts, ideal, 0)
+    h: np.ndarray | None = cv2.findHomography(pts, ideal, 0)[0]  # None when the points are degenerate
     if h is None:
         return float("inf")
     projected = cv2.perspectiveTransform(pts.reshape(-1, 1, 2), h).reshape(-1, 2)
@@ -180,7 +199,9 @@ def find_grid(gray: np.ndarray, pattern: tuple[int, int]) -> np.ndarray | None:
         found, corners = cv2.findChessboardCornersSB(gray, pattern, flags=flags)
         if found:
             attempts.append(corners)
-    found, corners = cv2.findChessboardCorners(gray, pattern, flags=cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_NORMALIZE_IMAGE)
+    found, corners = cv2.findChessboardCorners(
+        gray, pattern, flags=cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_NORMALIZE_IMAGE
+    )
     if found:
         criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 40, 0.01)
         attempts.append(cv2.cornerSubPix(gray, corners, (5, 5), (-1, -1), criteria))
@@ -241,9 +262,9 @@ def calibration_from_middle_block(grid: np.ndarray, frame_size: tuple[int, int],
         grid = grid[:, ::-1]
     sq = warp_size / 8
     r_idx, c_idx = np.mgrid[0:rows, 0:cols]
-    if cols == 3:   # columns run across ranks 3-6
+    if cols == 3:  # columns run across ranks 3-6
         x, y = (c_idx + 3) * sq, (r_idx + 1) * sq
-    else:           # rows run across ranks 3-6
+    else:  # rows run across ranks 3-6
         x, y = (c_idx + 1) * sq, (r_idx + 3) * sq
     warp_pts = np.stack([x, y], axis=-1).reshape(-1, 2).astype(np.float32)
     img_pts = np.ascontiguousarray(grid).reshape(-1, 2)
@@ -276,6 +297,7 @@ def detect_board(frame: np.ndarray, warp_size: int) -> Calibration | None:
 
 
 # ---------------------------------------------------------------- manual corners
+
 
 def order_corners(pts: np.ndarray) -> np.ndarray:
     """Sort 4 points clockwise in image coords (y down), starting top-left."""
@@ -317,10 +339,13 @@ def click_outer_corners(frame: np.ndarray, window: str = "Click 4 corners") -> n
                 draw_points(vis, pts.astype(np.float32), GREEN, radius=4)
             _draw_magnifier(vis, frame, cursor)
             done = len(points) == 4
-            draw_hud(vis, [
-                f"Click the 4 OUTER corners of the playing area ({len(points)}/4)",
-                "ENTER accept   U undo   R reset   ESC cancel" if done else "U undo   R reset   ESC cancel",
-            ])
+            draw_hud(
+                vis,
+                [
+                    f"Click the 4 OUTER corners of the playing area ({len(points)}/4)",
+                    "ENTER accept   U undo   R reset   ESC cancel" if done else "U undo   R reset   ESC cancel",
+                ],
+            )
             cv2.imshow(window, vis)
             key = cv2.waitKey(20) & 0xFF
             if key == 27 or cv2.getWindowProperty(window, cv2.WND_PROP_VISIBLE) < 1:
@@ -350,7 +375,7 @@ def _draw_magnifier(vis: np.ndarray, frame: np.ndarray, cursor: list[int], radiu
     cx, cy = (x - x0) * zoom, (y - y0) * zoom
     cv2.line(patch, (cx, 0), (cx, ph), RED, 1)
     cv2.line(patch, (0, cy), (pw, cy), RED, 1)
-    vis[0:ph, w - pw:w] = patch
+    vis[0:ph, w - pw : w] = patch
     cv2.rectangle(vis, (w - pw, 0), (w - 1, ph - 1), (255, 255, 255), 1)
 
 
@@ -360,7 +385,9 @@ WINDOW = "Calibration"
 PREVIEW_WINDOW = "Calibration preview"
 
 
-def _auto_detect(grabber: FrameGrabber, settings: CalibrationSettings, after: int) -> tuple[Calibration | None, np.ndarray | None, str]:
+def _auto_detect(
+    grabber: FrameGrabber, settings: CalibrationSettings, after: int
+) -> tuple[Calibration | None, np.ndarray | None, str]:
     best_error = None
     for _ in range(settings.detect_attempts):
         frame = grabber.wait_for_frame(after, timeout=15.0)  # this camera can take several seconds per frame
@@ -369,12 +396,15 @@ def _auto_detect(grabber: FrameGrabber, settings: CalibrationSettings, after: in
         after = frame.index
         t0 = time.perf_counter()
         cal = detect_board(frame.image, settings.warp_size)
-        logger.debug("findChessboardCornersSB took %.0f ms, found=%s", (time.perf_counter() - t0) * 1000, cal is not None)
+        logger.debug(
+            "findChessboardCornersSB took %.0f ms, found=%s", (time.perf_counter() - t0) * 1000, cal is not None
+        )
         if cal is None:
             continue
-        if cal.reprojection_px <= settings.max_reprojection_px:
+        if cal.fits(settings.max_reprojection_px):
             return cal, frame.image, ""
-        best_error = cal.reprojection_px if best_error is None else min(best_error, cal.reprojection_px)
+        error = cal.reprojection_px if cal.reprojection_px is not None else float("inf")
+        best_error = error if best_error is None else min(best_error, error)
         logger.info("Board found but fit error %.2fpx > %.2fpx", cal.reprojection_px, settings.max_reprojection_px)
     if best_error is not None:
         return None, None, f"Board found but fit error {best_error:.1f}px is too high (lens distortion?). Press M."
@@ -409,7 +439,7 @@ def _confirm(cal: Calibration, frame: np.ndarray, show_labels: bool) -> bool:
 def auto_calibrate(grabber: FrameGrabber, settings: CalibrationSettings, attempts: int = 5) -> Calibration | None:
     """Calibrate without a window (empty board or starting position); saves on success."""
     cal, frame, error = _auto_detect(grabber, replace_attempts(settings, attempts), -1)
-    if cal is None:
+    if cal is None or frame is None:
         logger.info("Automatic calibration failed: %s", error)
         return None
     cal.save(resolve_path(settings.dir), frame, settings.canny_low, settings.canny_high)
@@ -420,7 +450,9 @@ def replace_attempts(settings: CalibrationSettings, attempts: int) -> Calibratio
     return settings.model_copy(update={"detect_attempts": attempts})
 
 
-def run_calibration(grabber: FrameGrabber, settings: CalibrationSettings, show_labels: bool = True) -> Calibration | None:
+def run_calibration(
+    grabber: FrameGrabber, settings: CalibrationSettings, show_labels: bool = True
+) -> Calibration | None:
     """Interactive calibration on an empty board. Saves and returns the result, or None if cancelled."""
     directory = resolve_path(settings.dir)
     cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
@@ -441,8 +473,10 @@ def run_calibration(grabber: FrameGrabber, settings: CalibrationSettings, show_l
                 continue
 
             vis = frame.copy()
-            lines = ["CALIBRATION: empty board, or pieces in the starting position",
-                     "SPACE auto-detect   M click 4 corners   ESC cancel"]
+            lines = [
+                "CALIBRATION: empty board, or pieces in the starting position",
+                "SPACE auto-detect   M click 4 corners   ESC cancel",
+            ]
             if time.monotonic() < message_until:
                 lines.append(message)
             draw_hud(vis, lines)

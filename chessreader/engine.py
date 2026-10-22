@@ -7,11 +7,11 @@ older positions are skipped. Results go to every registered listener.
 from __future__ import annotations
 
 import logging
-import threading
-from dataclasses import dataclass, field
 import shutil
+import threading
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
 
 import chess
 import chess.engine
@@ -22,11 +22,11 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Analysis:
     fen: str
-    eval_cp: int | None            # centipawns from White's point of view
-    mate: int | None               # moves to mate from White's point of view
-    best_move: str | None          # SAN
+    eval_cp: int | None  # centipawns from White's point of view
+    mate: int | None  # moves to mate from White's point of view
+    best_move: str | None  # SAN
     pv: list[str] = field(default_factory=list)  # SAN
-    wdl: tuple[int, int, int] | None = None      # White win/draw/loss per mille
+    wdl: tuple[int, int, int] | None = None  # White win/draw/loss per mille
     depth: int | None = None
     lines: list[tuple[str, str]] = field(default_factory=list)  # (eval text, SAN line) for each multipv
 
@@ -41,10 +41,10 @@ class Analysis:
 
 def _score_text(score: chess.engine.PovScore) -> str:
     white = score.white()
-    if white.is_mate():
-        m = white.mate()
-        return f"M{m}" if m > 0 else f"-M{-m}"
-    return f"{white.score() / 100:+.2f}"
+    mate = white.mate()
+    if mate is not None:
+        return f"M{mate}" if mate > 0 else f"-M{-mate}"
+    return f"{white.score(mate_score=0) / 100:+.2f}"  # not a mate here, so this is the centipawn score
 
 
 def _san_line(board: chess.Board, moves: list[chess.Move]) -> list[str]:
@@ -59,8 +59,12 @@ def _san_line(board: chess.Board, moves: list[chess.Move]) -> list[str]:
 
 
 # where Stockfish usually ends up: Homebrew (Apple silicon, Intel), Linux packages, this project
-_COMMON_PATHS = ("/opt/homebrew/bin/stockfish", "/usr/local/bin/stockfish", "/usr/games/stockfish",
-                 "/usr/bin/stockfish")
+_COMMON_PATHS = (
+    "/opt/homebrew/bin/stockfish",
+    "/usr/local/bin/stockfish",
+    "/usr/games/stockfish",
+    "/usr/bin/stockfish",
+)
 
 
 def find_stockfish(configured: str | Path | None) -> str | None:
@@ -97,7 +101,7 @@ class EngineWorker:
         self._stop = False
         self._thread: threading.Thread | None = None
 
-    def start(self) -> "EngineWorker":
+    def start(self) -> EngineWorker:
         if not Path(self.path).exists():
             raise FileNotFoundError(f"Stockfish not found at {self.path}")
         self._thread = threading.Thread(target=self._run, name="Stockfish", daemon=True)
@@ -132,7 +136,7 @@ class EngineWorker:
                 with self._cond:
                     while self._pending is None and not self._stop:
                         self._cond.wait()
-                    if self._stop:
+                    if self._stop or self._pending is None:
                         return
                     board, self._pending = self._pending, None
                 if board.is_game_over():
@@ -162,8 +166,11 @@ class EngineWorker:
         if top.get("wdl") is not None:
             w = top["wdl"].white()
             wdl = (w.wins, w.draws, w.losses)
-        lines = [(_score_text(i["score"]), " ".join(_san_line(board, i.get("pv", [])[:6])))
-                 for i in infos if i.get("score") is not None]
+        lines = [
+            (_score_text(i["score"]), " ".join(_san_line(board, i.get("pv", [])[:6])))
+            for i in infos
+            if i.get("score") is not None
+        ]
         return Analysis(
             fen=board.fen(),
             eval_cp=None if white is None or white.is_mate() else white.score(),

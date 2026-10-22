@@ -12,15 +12,22 @@ RED = (0, 0, 255)
 CORNER_LABELS = ("TL", "TR", "BR", "BL")
 
 
-def put_text(img: np.ndarray, text: str, org: tuple[int, int], scale: float = 0.6,
-             color: tuple[int, int, int] = (255, 255, 255), thickness: int = 1) -> None:
+def put_text(
+    img: np.ndarray,
+    text: str,
+    org: tuple[int, int],
+    scale: float = 0.6,
+    color: tuple[int, int, int] = (255, 255, 255),
+    thickness: int = 1,
+) -> None:
     """Text with a dark outline so it reads on any background."""
     cv2.putText(img, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 0, 0), thickness + 3, cv2.LINE_AA)
     cv2.putText(img, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, color, thickness, cv2.LINE_AA)
 
 
-def draw_hud(img: np.ndarray, lines: list[str], origin: tuple[int, int] = (10, 24),
-             color: tuple[int, int, int] = (255, 255, 255)) -> None:
+def draw_hud(
+    img: np.ndarray, lines: list[str], origin: tuple[int, int] = (10, 24), color: tuple[int, int, int] = (255, 255, 255)
+) -> None:
     x, y = origin
     for line in lines:
         put_text(img, line, (x, y), color=color)
@@ -31,7 +38,7 @@ def draw_quad(img: np.ndarray, corners: np.ndarray, color: tuple[int, int, int] 
     """Outline the board; corners are in warp order TL, TR, BR, BL."""
     pts = np.round(corners).astype(np.int32).reshape(-1, 1, 2)
     cv2.polylines(img, [pts], True, color, 2, cv2.LINE_AA)
-    for label, (x, y) in zip(CORNER_LABELS, np.round(corners).astype(int)):
+    for label, (x, y) in zip(CORNER_LABELS, np.round(corners).astype(int), strict=True):
         cv2.circle(img, (x, y), 5, color, -1, cv2.LINE_AA)
         put_text(img, label, (x + 6, y - 6), scale=0.5, color=color)
 
@@ -75,14 +82,14 @@ def draw_change(frame: np.ndarray, change: np.ndarray, roi: tuple[int, int, int,
     frame[y0:y1, x0:x1] = (region * (1 - weight) + tint * weight).astype(np.uint8)
 
 
-def draw_mask_outline(frame: np.ndarray, mask: np.ndarray, roi: tuple[int, int, int, int],
-                      color: tuple[int, int, int] = YELLOW) -> None:
+def draw_mask_outline(
+    frame: np.ndarray, mask: np.ndarray, roi: tuple[int, int, int, int], color: tuple[int, int, int] = YELLOW
+) -> None:
     x0, y0, x1, y1 = roi
     big = cv2.resize(mask.astype(np.uint8), (x1 - x0, y1 - y0), interpolation=cv2.INTER_NEAREST)
     contours, _ = cv2.findContours(big, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    for c in contours:
-        c += np.array([[[x0, y0]]], dtype=c.dtype)
-    cv2.drawContours(frame, contours, -1, color, 2, cv2.LINE_AA)
+    shifted = [c + np.array([[[x0, y0]]], dtype=c.dtype) for c in contours]
+    cv2.drawContours(frame, shifted, -1, color, 2, cv2.LINE_AA)
 
 
 def draw_occupancy(warp: np.ndarray, probs: np.ndarray | None) -> None:
@@ -104,14 +111,6 @@ def draw_occupancy(warp: np.ndarray, probs: np.ndarray | None) -> None:
             cv2.circle(warp, center, int(sq * 0.12 * (0.5 + p[k])), (0, 160, 255), 1, cv2.LINE_AA)
 
 
-def draw_move(warp: np.ndarray, move, color: tuple[int, int, int] = (0, 200, 255)) -> None:
-    if move is None:
-        return
-    size = warp.shape[0]
-    a, b = square_px(move.from_square, size), square_px(move.to_square, size)
-    cv2.arrowedLine(warp, a, b, color, 4, cv2.LINE_AA, tipLength=0.25)
-
-
 def draw_eval_bar(img: np.ndarray, eval_cp: int | None, mate: int | None, width: int = 26) -> np.ndarray:
     """Return img with a white/black eval bar on its left."""
     h = img.shape[0]
@@ -123,7 +122,7 @@ def draw_eval_bar(img: np.ndarray, eval_cp: int | None, mate: int | None, width:
         frac = 0.5
     bar = np.full((h, width, 3), 30, np.uint8)
     white_h = int(h * frac)
-    bar[h - white_h:] = 235
+    bar[h - white_h :] = 235
     cv2.line(bar, (0, h // 2), (width, h // 2), (0, 0, 255), 1)
     return np.hstack([bar, img])
 
@@ -142,8 +141,9 @@ def square_rect(square: int, size: int) -> tuple[int, int, int, int]:
     return int(round(col * sq)), int(round(row * sq)), int(round((col + 1) * sq)), int(round((row + 1) * sq))
 
 
-def highlight_squares(warp: np.ndarray, squares, color: tuple[int, int, int] = (0, 200, 230),
-                      alpha: float = 0.35) -> None:
+def highlight_squares(
+    warp: np.ndarray, squares, color: tuple[int, int, int] = (0, 200, 230), alpha: float = 0.35
+) -> None:
     """Semi-transparent fill of whole squares, like chess sites mark the last move."""
     for square in squares:
         x0, y0, x1, y1 = square_rect(square, warp.shape[0])
@@ -158,8 +158,9 @@ def highlight_move(warp: np.ndarray, move, color: tuple[int, int, int] = (0, 200
         highlight_squares(warp, (move.from_square, move.to_square), color, alpha)
 
 
-def draw_soft_arrow(warp: np.ndarray, move, color: tuple[int, int, int] = YELLOW, alpha: float = 0.5,
-                    width: float = 0.07) -> None:
+def draw_soft_arrow(
+    warp: np.ndarray, move, color: tuple[int, int, int] = YELLOW, alpha: float = 0.5, width: float = 0.07
+) -> None:
     """Thin semi-transparent arrow from square center to square center; width is a fraction of a square."""
     if move is None:
         return
@@ -199,8 +200,14 @@ def badge_corner(move, taken=()) -> str:
     return max(free, key=lambda c: BADGE_CORNERS[c][0] * dx + BADGE_CORNERS[c][1] * dy - (2.5 if c == "tl" else 0))
 
 
-def draw_badge(warp: np.ndarray, square: int, text: str, color: tuple[int, int, int] = YELLOW,
-               corner: str = "tr", scale: float = 1.0) -> None:
+def draw_badge(
+    warp: np.ndarray,
+    square: int,
+    text: str,
+    color: tuple[int, int, int] = YELLOW,
+    corner: str = "tr",
+    scale: float = 1.0,
+) -> None:
     """Small filled circle with a label, tucked into a corner of the square so the piece stays visible."""
     x0, y0, x1, y1 = square_rect(square, warp.shape[0])
     sq = x1 - x0
@@ -213,8 +220,16 @@ def draw_badge(warp: np.ndarray, square: int, text: str, color: tuple[int, int, 
     font_scale = r / 22
     thickness = max(1, int(round(r / 9)))
     (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
-    cv2.putText(warp, text, (cx - tw // 2, cy + th // 2), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (20, 20, 20),
-                thickness, cv2.LINE_AA)
+    cv2.putText(
+        warp,
+        text,
+        (cx - tw // 2, cy + th // 2),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        font_scale,
+        (20, 20, 20),
+        thickness,
+        cv2.LINE_AA,
+    )
 
 
 def draw_choices(warp: np.ndarray, moves, color: tuple[int, int, int] = YELLOW) -> None:

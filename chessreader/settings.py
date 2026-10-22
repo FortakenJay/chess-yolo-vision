@@ -79,24 +79,26 @@ class LoggingSettings(BaseModel):
 
 
 class GateSettings(BaseModel):
-    pixel_threshold: float = 18.0      # gray-level change that counts as motion
-    motion_fraction: float = 0.004     # share of board pixels that must change to count as motion
-    stable_time_s: float = 0.8         # board must be still this long ...
-    min_stable_frames: int = 2         # ... and for at least this many frames
+    pixel_threshold: float = 18.0  # gray-level change that counts as motion
+    motion_fraction: float = 0.004  # share of board pixels that must change to count as motion
+    stable_time_s: float = 0.8  # board must be still this long ...
+    min_stable_frames: int = 2  # ... and for at least this many frames
 
 
 class ReaderSettings(BaseModel):
-    scale: float = Field(0.5, gt=0.1, le=1.0)   # work resolution for change maps
-    t_low: float = 10.0                # color distance below which a pixel is unchanged
-    t_high: float = 28.0               # color distance above which a pixel surely changed
-    texture_weight: float = 5.0        # weight of local-contrast change (black pieces on dark squares)
-    q_in: float = 0.55                 # chance a pixel inside a moved piece's outline visibly changes
-    q_out: float = 0.03                # noise rate elsewhere
-    q_in_low: float = 0.25             # same, where piece and background share a tone (black on dark)
-    off_board_weight: float = 1.0      # change beyond the board edge (tall pieces' tops, also hands); capped by on-board evidence
-    height_scale: float = 1.0          # scales the assumed piece heights
-    min_change_px: float = 900.0       # less observed change than this = nothing happened
-    occlusion_fraction: float = 0.35   # more than this share of the board changed = hand/arm in view
+    scale: float = Field(0.5, gt=0.1, le=1.0)  # work resolution for change maps
+    t_low: float = 10.0  # color distance below which a pixel is unchanged
+    t_high: float = 28.0  # color distance above which a pixel surely changed
+    texture_weight: float = 5.0  # weight of local-contrast change (black pieces on dark squares)
+    q_in: float = 0.55  # chance a pixel inside a moved piece's outline visibly changes
+    q_out: float = 0.03  # noise rate elsewhere
+    q_in_low: float = 0.25  # same, where piece and background share a tone (black on dark)
+    off_board_weight: float = (
+        1.0  # change beyond the board edge (tall pieces' tops, also hands); capped by on-board evidence
+    )
+    height_scale: float = 1.0  # scales the assumed piece heights
+    min_change_px: float = 900.0  # less observed change than this = nothing happened
+    occlusion_fraction: float = 0.35  # more than this share of the board changed = hand/arm in view
     unexplained_alarm_px: float = 6000.0  # change no move explains: ignore below this, ask above
 
 
@@ -113,7 +115,7 @@ class ConfirmTiers(BaseModel):
 
 
 class LlmSettings(BaseModel):
-    enabled: bool = False              # tier 3; needs ANTHROPIC_API_KEY in .env
+    enabled: bool = False  # tier 3; needs ANTHROPIC_API_KEY in .env
     model: str = "claude-sonnet-5-5"
 
 
@@ -122,7 +124,7 @@ class HealthSettings(BaseModel):
     sync_min_confidence: float = 0.9
     drift_every_s: float = 10.0
     drift_threshold: float = 0.45
-    track_min_px: float = 2.0       # follow camera shifts larger than this (board-corner pixels)
+    track_min_px: float = 2.0  # follow camera shifts larger than this (board-corner pixels)
 
 
 class EngineSettings(BaseModel):
@@ -130,19 +132,19 @@ class EngineSettings(BaseModel):
     path: str = ""
     think_time_s: float = 0.5
     multipv: int = 3
-    show_best_moves: bool = True       # false = training/review mode: hide best moves while playing
+    show_best_moves: bool = True  # false = training/review mode: hide best moves while playing
 
 
 class OpeningsSettings(BaseModel):
     enabled: bool = True
-    book: str = ""                     # opening book TSV (eco, name, pgn); empty = the bundled one
-    show_book_moves: int = 3           # theory moves shown from the current position (0 = name only)
+    book: str = ""  # opening book TSV (eco, name, pgn); empty = the bundled one
+    show_book_moves: int = 3  # theory moves shown from the current position (0 = name only)
 
 
 class StorageSettings(BaseModel):
     exports_dir: str = "exports"
     sessions_dir: str = "sessions"
-    record_frames: bool = True         # keep every frame for replay testing
+    record_frames: bool = True  # keep every frame for replay testing
     white: str = "White"
     black: str = "Black"
 
